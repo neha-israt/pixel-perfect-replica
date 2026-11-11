@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeCod, normalizeDigits, orderErrors, parseCsv, parseOrders, sampleText, steadfastCsv, templateCsv } from './orders';
+import { applyEdit, computeCod, normalizeDigits, orderErrors, parseCsv, parseOrders, sampleText, steadfastCsv, templateCsv } from './orders';
 
 function requiredOrder(text = sampleText, index = 0) {
   const order = parseOrders(text)[index];
@@ -10,31 +10,40 @@ function requiredOrder(text = sampleText, index = 0) {
 describe('Order clean-up', () => {
   it('extracts recipient, full address, phone and BDT COD', () => {
     const order = parseOrders(sampleText)[0];
-    expect(order).toMatchObject({ name: 'Nusrat Jahan', phone: '01712345678', address: 'House 12, Road 4, Dhanmondi, Dhaka', product: '1450', zone: 'inside', delivery: '60', cod: '1510' });
+    expect(order).toMatchObject({ name: 'Nusrat Jahan', phone: '01712345678', address: 'House 12, Road 4, Dhanmondi, Dhaka', cod: '1450', zone: 'inside', delivery: '60', product: '1390' });
   });
   it('normalizes Bangla digits and parses Bangla labels', () => {
     expect(normalizeDigits('০১৮১২৩৪৫৬৭৮')).toBe('01812345678');
-    expect(parseOrders(sampleText)[1]).toMatchObject({ name: 'রাফি হাসান', phone: '01812345678', product: '850' });
+    expect(parseOrders(sampleText)[1]).toMatchObject({ name: 'রাফি হাসান', phone: '01812345678', cod: '850', product: '790' });
   });
   it('flags a phone missing one of the 11 digits', () => {
     expect(orderErrors(requiredOrder(sampleText, 2))).toContain('phone');
   });
-  it('flags missing product amount but allows zero', () => {
+  it('flags missing total COD but allows zero product amount', () => {
     const order = requiredOrder();
-    expect(orderErrors({ ...order, product: '' })).toContain('product');
+    expect(orderErrors({ ...order, cod: '' })).toContain('cod');
     expect(orderErrors({ ...order, product: '0' })).not.toContain('product');
   });
   it('ignores leading chat and reads abbreviated labels', () => {
     const order = requiredOrder('apu dress ta hobe?\nRina Begum\nphn: 01556-778899\naddr: Agrabad, Chattogram\nprice 1200 tk');
-    expect(order).toMatchObject({ name: 'Rina Begum', phone: '01556778899', address: 'Agrabad, Chattogram', product: '1200' });
+    expect(order).toMatchObject({ name: 'Rina Begum', phone: '01556778899', address: 'Agrabad, Chattogram', cod: '1200', product: '1090' });
     expect(orderErrors(order)).toEqual([]);
   });
   it('defaults delivery to 60 inside Dhaka and 110 outside', () => {
     expect(requiredOrder(sampleText, 0)).toMatchObject({ zone: 'inside', delivery: '60' });
-    expect(requiredOrder(sampleText, 2)).toMatchObject({ zone: 'outside', delivery: '110', cod: '2310' });
+    expect(requiredOrder(sampleText, 2)).toMatchObject({ zone: 'outside', delivery: '110', cod: '2200', product: '2090' });
   });
   it('computes total COD as product plus delivery', () => {
     expect(computeCod('1450', '75')).toBe('1525');
+  });
+  it('keeps the agreed total when the zone changes and back-calculates product', () => {
+    const order = applyEdit(requiredOrder(), { zone: 'outside', delivery: '110' });
+    expect(order).toMatchObject({ cod: '1450', product: '1340' });
+  });
+  it('editing total COD back-calculates product; editing product updates total', () => {
+    const order = requiredOrder();
+    expect(applyEdit(order, { cod: '2000' }).product).toBe('1940');
+    expect(applyEdit(order, { product: '1000' }).cod).toBe('1060');
   });
   it('converts a Bangladesh country code to local format', () => {
     expect(requiredOrder('Name: Rafi\nPhone: +8801712345678\nAddress: Dhaka\nCOD: 200').phone).toBe('01712345678');

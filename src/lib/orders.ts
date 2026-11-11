@@ -10,7 +10,18 @@ export function computeCod(product: string, delivery: string) {
   const total = Number(product) + (Number(delivery) || 0);
   return String(Math.round(total * 100) / 100);
 }
-export function withTotals(order: Order): Order { return { ...order, cod: computeCod(order.product, order.delivery) }; }
+/** Product amount = total COD - delivery charge; blank when total is missing. */
+export function productFromCod(cod: string, delivery: string) {
+  if (!cod.trim() || !Number.isFinite(Number(cod))) return '';
+  return String(Math.round((Number(cod) - (Number(delivery) || 0)) * 100) / 100);
+}
+/** Apply an edit: editing product recomputes the total; editing total, delivery or zone keeps the total and recomputes product. */
+export function applyEdit(order: Order, patch: Partial<Order>): Order {
+  const next = { ...order, ...patch };
+  if ('product' in patch && !('cod' in patch)) return { ...next, cod: computeCod(next.product, next.delivery) };
+  if ('cod' in patch || 'delivery' in patch || 'zone' in patch) return { ...next, product: productFromCod(next.cod, next.delivery) };
+  return next;
+}
 export type Batch = { id: string; date: string; courier: string; orders: Order[] };
 
 export const sampleText = `Name: Nusrat Jahan
@@ -70,7 +81,7 @@ export function parseOrders(text: string, start = 1): Order[] {
       : lines.filter(x => x !== name && !known.test(x) && !/(?:\+?88)?01[\d -]{7,}|(?:tk|bdt|টাকা|৳)/i.test(x)).join(', ');
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
-    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, product: cod, delivery, zone, cod: computeCod(cod, delivery), note };
+    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, product: productFromCod(cod, delivery), delivery, zone, cod, note };
   });
 }
 
@@ -79,6 +90,7 @@ export function orderErrors(order: Order): string[] {
   if (!order.name.trim()) errors.push('name');
   if (!/^01\d{9}$/.test(order.phone)) errors.push('phone');
   if (!order.address.trim()) errors.push('address');
+  if (!order.cod.trim() || !Number.isFinite(Number(order.cod)) || Number(order.cod) < 0) errors.push('cod');
   if (!order.product.trim() || !Number.isFinite(Number(order.product)) || Number(order.product) < 0) errors.push('product');
   if (!order.delivery.trim() || !Number.isFinite(Number(order.delivery)) || Number(order.delivery) < 0) errors.push('delivery');
   return errors;
