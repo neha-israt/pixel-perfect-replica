@@ -1,23 +1,50 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { useState } from 'react';
+import { AlertCircle, ArrowDownToLine, ArrowRight, Check, CheckCircle2, Clipboard, Download, FileText, History, ListFilter, Package, Pencil, Plus, Search, ShieldCheck, Sparkles, Trash2, Wallet, X } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { WorkspaceShell } from '@/components/workspace-shell';
+import { OrderEditor } from '@/components/order-editor';
+import { PathaoExport } from '@/components/pathao-export';
+import { orderErrors, parseOrders, sampleText, steadfastCsv, type Order } from '@/lib/orders';
+import { downloadCsv, saveBatch } from '@/lib/batch-storage';
 
-// The home route ships no og:image, so serve-time hosting can inject the
-// project's social preview (explicit og:image or latest screenshot).
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute('/')({
+  head: () => ({ meta: [{ title: 'Order clean-up — OrderClean BD' }, { name: 'description', content: 'Turn messy customer messages into clean, editable orders and courier CSV files for Bangladesh.' }, { property: 'og:title', content: 'Order clean-up — OrderClean BD' }, { property: 'og:description', content: 'A calmer courier dispatch workspace for Bangladeshi merchants.' }, { property: 'og:type', content: 'website' }, { name: 'twitter:card', content: 'summary_large_image' }] }),
   component: Index,
 });
 
-// IMPORTANT: Replace this placeholder. See ./README.md for routing conventions.
 function Index() {
-  return (
-    <div
-      className="flex min-h-screen items-center justify-center"
-      style={{ backgroundColor: "#fcfbf8" }}
-    >
-      <img
-        data-lovable-blank-page-placeholder="REMOVE_THIS"
-        src="https://cdn.gpteng.co/blank-app-v1.svg"
-        alt="Your app will live here!"
-      />
-    </div>
-  );
+  const [text, setText] = useState('');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
+  const [edit, setEdit] = useState<Order | null>(null);
+  const [pathao, setPathao] = useState(false);
+  const [message, setMessage] = useState('');
+  const valid = orders.filter(o => !orderErrors(o).length);
+  const flagged = orders.length - valid.length;
+  const visible = orders.filter(o => `${o.name} ${o.phone} ${o.invoice} ${o.address}`.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || (filter === 'ready' ? !orderErrors(o).length : orderErrors(o).length)));
+  const exportOrders = selected.length ? orders.filter(o => selected.includes(o.id)) : orders;
+  const canExport = exportOrders.length > 0 && exportOrders.every(o => !orderErrors(o).length);
+  function addParsed(value: string) {
+    const next = parseOrders(value, orders.length + 1);
+    setOrders([...orders, ...next]); setText(''); setMessage(`${next.length} orders added to your queue.`);
+  }
+  function exportBatch(courier: string, csv: string) {
+    downloadCsv(csv, `orderclean-${courier.toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`);
+    try { saveBatch({ id: String(Date.now()), date: new Date().toISOString(), courier, orders: exportOrders }); setMessage(`${courier} CSV downloaded. Batch saved in history.`); }
+    catch { setMessage('CSV downloaded, but device storage is unavailable. History was not saved.'); }
+    setPathao(false);
+  }
+  return <WorkspaceShell>
+    <div className="page-heading"><div><div className="flex items-center gap-3"><h1>Order clean-up</h1><span className="tag good text-[10px]">YOUR DAILY DISPATCH, SIMPLIFIED</span></div><p className="subtitle">Messy messages in. Courier-ready orders out.</p></div><Button variant="outline" size="sm" asChild><Link to="/history"><History/>Batch history</Link></Button></div>
+    <div className="stats">{[{ title: 'Orders in queue', value: orders.length, caption: 'In your current batch', icon: Package, color: '' }, { title: 'Ready to dispatch', value: valid.length, caption: 'All details look good', icon: CheckCircle2, color: 'text-success' }, { title: 'Needs attention', value: flagged, caption: 'A quick check before dispatch', icon: AlertCircle, color: 'text-warning' }, { title: 'Total COD amount', value: `৳ ${orders.reduce((s,o) => s + (Number(o.cod) || 0), 0).toLocaleString('en-BD')}`, caption: 'Bangladeshi Taka (BDT)', icon: Wallet, color: '' }].map(stat => <div className="stat" key={stat.title}><div className="stat-top">{stat.title}<span className={`stat-icon ${stat.color}`}><stat.icon size={16}/></span></div><div className={`stat-value ${stat.color}`}>{stat.value}</div><div className="stat-caption">{stat.caption}</div></div>)}</div>
+    <section><div className="section-head"><h2><span className="step">1</span>Paste your orders</h2><Button variant="ghost" size="sm" onClick={() => setText(sampleText)}><FileText/>Try sample orders <ArrowRight size={13}/></Button></div><div className="parser-box"><textarea aria-label="Raw order messages" placeholder={'Paste customer orders from Messenger, WhatsApp, or anywhere else…\n\nName: Nusrat Jahan\nPhone: 01712-345678\nAddress: House 12, Road 4, Dhanmondi, Dhaka\nCOD: 1450 tk'} value={text} onChange={e => setText(e.target.value)}/><div className="parser-footer"><span className="text-[11px] text-muted-foreground flex items-center gap-2"><Clipboard size={14}/>Bangla & English supported <span className="mx-1">·</span> Separate orders with a blank line</span><div className="flex gap-3 items-center">{text && <Button variant="ghost" size="sm" onClick={() => setText('')} aria-label="Clear input"><X/></Button>}<Button disabled={!text.trim()} onClick={() => addParsed(text)}><Sparkles/>Clean up orders<ArrowRight size={14}/></Button></div></div></div></section>
+    {message && <div role="status" className="mt-4 flex justify-between items-center text-xs text-primary bg-accent px-4 py-2 rounded-md">{message}<Button variant="ghost" size="icon" className="h-6 w-6" aria-label="Dismiss message" onClick={() => setMessage('')}><X/></Button></div>}
+    <section><div className="section-head"><h2><span className="step">2</span>Review your order queue <span className="tag bg-secondary text-muted-foreground">{orders.length} orders</span></h2><Button variant="outline" size="sm" onClick={() => setEdit({ id: `order-${Date.now()}`, invoice: `OC-${String(orders.length + 1).padStart(4, '0')}`, name: '', phone: '', address: '', cod: '', note: '' })}><Plus/>Add order</Button></div><div className="table-wrap"><div className="table-toolbar"><label className="search"><Search size={15}/><input aria-label="Search orders" placeholder="Search orders…" value={search} onChange={e => setSearch(e.target.value)}/></label><div className="flex gap-2 items-center">{!!selected.length && <Button variant="ghost" size="sm" aria-label="Delete selected orders" onClick={() => { setOrders(orders.filter(o => !selected.includes(o.id))); setSelected([]); }}><Trash2/>Delete ({selected.length})</Button>}<ListFilter size={14} className="text-muted-foreground"/><select aria-label="Filter order status" className="filter-select" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All orders</option><option value="ready">Ready to dispatch</option><option value="attention">Needs attention</option></select></div></div><div className="table-scroll"><table className="order-table"><thead><tr><th><input type="checkbox" aria-label="Select all orders" checked={visible.length > 0 && visible.every(o => selected.includes(o.id))} onChange={e => setSelected(e.target.checked ? [...new Set([...selected, ...visible.map(o => o.id)])] : selected.filter(id => !visible.some(o => o.id === id)))}/></th><th>INVOICE</th><th>RECIPIENT</th><th>PHONE NUMBER</th><th>DELIVERY ADDRESS</th><th>COD (৳)</th><th>STATUS</th><th></th></tr></thead><tbody>{visible.map(o => { const errors = orderErrors(o); return <tr key={o.id}><td><input type="checkbox" aria-label={`Select ${o.name || o.invoice}`} checked={selected.includes(o.id)} onChange={e => setSelected(e.target.checked ? [...selected,o.id] : selected.filter(id => id !== o.id))}/></td><td className="text-muted-foreground text-[11px]">{o.invoice}</td><td className={errors.includes('name') ? 'invalid-cell' : 'font-medium'}>{o.name || 'Missing name'}{o.note && <p className="text-[10px] text-muted-foreground mt-1 max-w-36 truncate" title={o.note}>{o.note}</p>}</td><td className={errors.includes('phone') ? 'invalid-cell' : ''}>{o.phone || 'Missing phone'}{errors.includes('phone') && <p className="text-[9px] mt-1 flex items-center gap-1"><AlertCircle size={10}/>Check phone number</p>}</td><td className={`address ${errors.includes('address') ? 'invalid-cell' : ''}`}>{o.address || 'Missing address'}</td><td className={errors.includes('cod') ? 'invalid-cell' : 'font-semibold whitespace-nowrap'}>{o.cod === '' ? 'Missing COD' : Number(o.cod).toLocaleString('en-BD')}</td><td><span className={`tag ${errors.length ? 'warn' : 'good'}`}>{errors.length ? <AlertCircle size={11}/> : <Check size={11}/>}{errors.length ? 'Review' : 'Ready'}</span></td><td><Button variant="ghost" size="icon" aria-label={`Edit ${o.name || o.invoice}`} className="h-7 w-7 text-muted-foreground" onClick={() => setEdit(o)}><Pencil size={13}/></Button></td></tr>; })}</tbody></table></div>{!visible.length && <div className="empty-state"><Package size={27} className="mx-auto mb-3 text-primary"/>{orders.length ? 'No matching orders.' : 'Your next batch starts here.'}<div className="mt-3">{!orders.length && <Button variant="outline" size="sm" onClick={() => { setText(sampleText); }}><FileText/>Try sample orders</Button>}</div></div>}<div className="table-bottom"><span>{selected.length ? `${selected.length} selected` : `${visible.length} of ${orders.length} orders`}</span><span className="flex gap-1.5 items-center"><ShieldCheck size={12}/>Saved on export</span></div></div></section>
+    {flagged > 0 && <div className="mt-3 flex gap-2 items-center text-[11px] text-warning"><AlertCircle size={13}/>{flagged} {flagged === 1 ? 'order needs' : 'orders need'} attention. Fix flagged details or select only ready orders.</div>}
+    <section className="export-bar"><div><h2 className="text-sm font-bold flex gap-2 items-center"><span className="step">3</span>Ready for the road?</h2><p className="text-[11px] text-muted-foreground mt-2">{selected.length ? selected.length : orders.length} orders in this export <span className="mx-1">·</span> ৳ {exportOrders.reduce((s,o) => s + (Number(o.cod) || 0), 0).toLocaleString('en-BD')} total COD</p></div><div className="export-actions"><Button variant="outline" disabled={!canExport} onClick={() => setPathao(true)}><ArrowDownToLine/>Export for Pathao</Button><Button disabled={!canExport} onClick={() => exportBatch('Steadfast', steadfastCsv(exportOrders))}><Download/>Export for Steadfast<ArrowRight size={14}/></Button></div></section>
+    {edit && <OrderEditor key={edit.id} order={edit} onClose={() => setEdit(null)} onSave={order => { setOrders(orders.some(o => o.id === order.id) ? orders.map(o => o.id === order.id ? order : o) : [...orders, order]); setEdit(null); }}/>} {pathao && <PathaoExport orders={exportOrders} onClose={() => setPathao(false)} onExport={csv => exportBatch('Pathao', csv)}/>}
+  </WorkspaceShell>;
 }

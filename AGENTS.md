@@ -28,3 +28,8 @@ use the editor.
   own key and store it in Secrets.
 - **Secrets.** Lovable manages them. Do not put secret values in the repo.
 <!-- LOVABLE:END -->
+
+- Keep parsing, validation, and CSV generation in browser-safe pure modules so dispatch rules can be unit tested without server dependencies.
+- Use device-local storage for exported batches as explicitly permitted in the product brief; read it after hydration and report storage failures.
+- Preserve Pathao's uploaded current sample header and require remaining fields instead of guessing its private merchant template.
+- Use the shared workspace shell for content routes to keep navigation and device-privacy status consistent.
