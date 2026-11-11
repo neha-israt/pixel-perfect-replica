@@ -1,4 +1,16 @@
-export type Order = { id: string; invoice: string; name: string; phone: string; address: string; cod: string; note: string };
+export type Zone = 'inside' | 'outside';
+export type Order = { id: string; invoice: string; name: string; phone: string; address: string; product: string; delivery: string; zone: Zone; cod: string; note: string };
+/** Default courier base rates in BDT (Pathao/Steadfast standard parcel benchmarks). */
+export const deliveryRates: Record<Zone, number> = { inside: 60, outside: 110 };
+export const zoneLabels: Record<Zone, string> = { inside: 'Inside Dhaka', outside: 'Outside Dhaka' };
+export function detectZone(address: string): Zone { return /dhaka|ঢাকা/i.test(address) ? 'inside' : 'outside'; }
+/** Total COD = product amount + delivery charge; blank when product amount is missing. */
+export function computeCod(product: string, delivery: string) {
+  if (!product.trim() || !Number.isFinite(Number(product))) return '';
+  const total = Number(product) + (Number(delivery) || 0);
+  return String(Math.round(total * 100) / 100);
+}
+export function withTotals(order: Order): Order { return { ...order, cod: computeCod(order.product, order.delivery) }; }
 export type Batch = { id: string; date: string; courier: string; orders: Order[] };
 
 export const sampleText = `Name: Nusrat Jahan
@@ -15,7 +27,13 @@ Note: Please call before delivery
 Name: Tahmina Akter
 Phone: 0191234567
 Address: 8/A, Zindabazar, Sylhet
-COD: 2200`;
+COD: 2200
+
+apu dress ta hobe?
+Rina Begum
+phn: 01556-778899
+addr: Agrabad, Chattogram
+price 1200 tk`;
 
 export function normalizeDigits(text: string) {
   return text.replace(/[০-৯]/g, digit => String('০১২৩৪৫৬৭৮৯'.indexOf(digit)));
@@ -25,24 +43,34 @@ export function parseOrders(text: string, start = 1): Order[] {
   const normalized = normalizeDigits(text).replace(/\r/g, '').trim();
   if (!normalized) return [];
   const chunks = normalized.split(/\n\s*\n|\n[-=]{3,}\n|\n(?=(?:name|recipient(?: name)?|নাম)\s*[:：])/i).filter(x => x.trim());
-  return chunks.map((chunk, i) => {
-    const lines = chunk.split('\n').map(x => x.trim()).filter(Boolean);
+  const keyLine = /^[^:：]{1,25}[:：]/;
+  const phoneRe = /(?:\+?88[ -]?)?01[\d -]{7,14}\d/;
+  const useful = chunks.filter(chunk => phoneRe.test(chunk) || chunk.split('\n').filter(x => keyLine.test(x.trim())).length >= 2);
+  return useful.map((rawChunk, i) => {
+    const allLines = rawChunk.split('\n').map(x => x.trim()).filter(Boolean);
+    // Drop leading conversational lines (questions, greetings) before the first data line.
+    const chatter = (x: string) => /[?？]|\b(?:hobe|ache|apu|bhai|vai|assalamu|salam|hi|hello|please|plz)\b/i.test(x) && !keyLine.test(x) && !phoneRe.test(x);
+    let startAt = 0; while (startAt < allLines.length - 1 && chatter(allLines[startAt] ?? '')) startAt++;
+    const lines = allLines.slice(startAt).filter(x => !chatter(x));
+    const chunk = lines.join('\n');
     const field = (pattern: RegExp) => lines.find(x => pattern.test(x))?.replace(pattern, '').trim() ?? '';
-    const phoneLine = field(/^(?:phone(?: number)?|mobile|contact|ফোন|মোবাইল|নম্বর)\s*[:：-]\s*/i);
-    const rawPhone = phoneLine || chunk.match(/(?:\+?88[ -]?)?01[\d -]{7,14}\d/)?.[0] || '';
+    const phoneLine = field(/^(?:phone(?: number)?|phn|ph|mob(?:ile)?|cell|contact|ফোন|মোবাইল|নম্বর)\s*[:：-]\s*/i);
+    const rawPhone = phoneLine || chunk.match(phoneRe)?.[0] || '';
     let phone = rawPhone.replace(/\D/g, '');
     if (phone.startsWith('8801')) phone = phone.slice(2);
-    const codLine = field(/^(?:cod(?: amount)?|cash(?: on delivery)?|amount|total|price|টাকা|মূল্য|দাম)\s*[:：-]\s*/i);
+    const codLine = field(/^(?:cod(?: amount)?|cash(?: on delivery)?|amount|total|price|product(?: price| amount)?|taka|tk|টাকা|মূল্য|দাম)\s*[:：-]?\s*(?=[\d৳])/i);
     const cod = (codLine || chunk.match(/(?:৳|tk\.?|bdt)\s*([\d,]+(?:\.\d+)?)/i)?.[1] || chunk.match(/([\d,]+(?:\.\d+)?)\s*(?:tk|bdt|টাকা)/i)?.[1] || '').replace(/[^\d.]/g, '');
     const name = field(/^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i) || lines.find(x => !/\d|[:：]|(?:tk|bdt)/i.test(x)) || '';
     const note = field(/^(?:note|instruction|নোট)\s*[:：-]\s*/i);
-    const addressLabel = /^(?:address|delivery address|ঠিকানা)\s*[:：-]\s*/i;
+    const addressLabel = /^(?:address|addr|add|delivery address|ঠিকানা)\s*[:：-]\s*/i;
     const addressIndex = lines.findIndex(x => addressLabel.test(x));
-    const known = /^(?:name|recipient|customer|phone|mobile|contact|cod|cash|amount|total|price|note|instruction|নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\b|^(?:নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\s*[:：]/i;
+    const known = /^(?:name|recipient|customer|phone|phn|ph|mob|mobile|cell|contact|cod|cash|amount|total|price|product|taka|tk|note|instruction|নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\b|^(?:নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\s*[:：]/i;
     const address = addressIndex >= 0
       ? [(lines[addressIndex] ?? '').replace(addressLabel, ''), ...lines.slice(addressIndex + 1).filter(x => !known.test(x))].join(', ')
       : lines.filter(x => x !== name && !known.test(x) && !/(?:\+?88)?01[\d -]{7,}|(?:tk|bdt|টাকা|৳)/i.test(x)).join(', ');
-    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, cod, note };
+    const zone = detectZone(address);
+    const delivery = String(deliveryRates[zone]);
+    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, product: cod, delivery, zone, cod: computeCod(cod, delivery), note };
   });
 }
 
@@ -51,7 +79,8 @@ export function orderErrors(order: Order): string[] {
   if (!order.name.trim()) errors.push('name');
   if (!/^01\d{9}$/.test(order.phone)) errors.push('phone');
   if (!order.address.trim()) errors.push('address');
-  if (!order.cod.trim() || !Number.isFinite(Number(order.cod)) || Number(order.cod) < 0) errors.push('cod');
+  if (!order.product.trim() || !Number.isFinite(Number(order.product)) || Number(order.product) < 0) errors.push('product');
+  if (!order.delivery.trim() || !Number.isFinite(Number(order.delivery)) || Number(order.delivery) < 0) errors.push('delivery');
   return errors;
 }
 
