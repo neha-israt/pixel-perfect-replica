@@ -70,7 +70,7 @@ export function parseOrders(text: string, start = 1): Order[] {
     let phone = rawPhone.replace(/\D/g, '');
     if (phone.startsWith('8801')) phone = phone.slice(2);
     const codLine = field(/^(?:cod(?: amount)?|cash(?: on delivery)?|amount|total|price|product(?: price| amount)?|taka|tk|টাকা|মূল্য|দাম)\s*[:：-]?\s*(?=[\d৳])/i);
-    const cod = (codLine || chunk.match(/(?:৳|tk\.?|bdt)\s*([\d,]+(?:\.\d+)?)/i)?.[1] || chunk.match(/([\d,]+(?:\.\d+)?)\s*(?:tk|bdt|টাকা)/i)?.[1] || '').replace(/[^\d.]/g, '');
+    const cod = extractCod(chunk, codLine);
     const name = field(/^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i) || lines.find(x => !/\d|[:：]|(?:tk|bdt)/i.test(x)) || '';
     const note = field(/^(?:note|instruction|নোট)\s*[:：-]\s*/i);
     const addressLabel = /^(?:address|addr|add|delivery address|ঠিকানা)\s*[:：-]\s*/i;
@@ -119,4 +119,17 @@ export function parseCsv(text: string): string[][] {
 
 export function templateCsv(headers: string[], rows: Record<string, string>[]) {
   return '\uFEFF' + [headers, ...rows.map(row => headers.map(h => row[h] ?? ''))].map(row => row.map(quote).join(',')).join('\r\n');
+}
+const num = (v?: string) => (v ? v.replace(/,/g, '') : '');
+/** Amount the courier collects: explicit due/baki/"N cod" wins, else price minus advance, else first listed amount. */
+export function extractCod(chunk: string, codLine = '') {
+  const N = '([\\d][\\d,]*(?:\\.\\d+)?)';
+  const due = chunk.match(new RegExp(`(?:baki|baaki|due|remaining|বাকি)\\s*[:：-]?\\s*(?:৳|tk\\.?|bdt)?\\s*${N}`, 'i'))?.[1]
+    || chunk.match(new RegExp(`${N}\\s*(?:৳|tk|taka|bdt|টাকা)?\\s*(?:cod|cash on delivery)\\b`, 'i'))?.[1];
+  if (due) return num(due);
+  const first = (t: string) => t.match(new RegExp(N))?.[1];
+  const main = num(first(codLine.replace(/\(.*?\)/g, ' ')) || chunk.match(new RegExp(`(?:৳|tk\\.?|bdt)\\s*${N}`, 'i'))?.[1] || chunk.match(new RegExp(`${N}\\s*(?:tk|bdt|টাকা)`, 'i'))?.[1]);
+  const adv = num(chunk.match(new RegExp(`(?:advance|adv|agrim|অগ্রিম|paid)\\s*[:：-]?\\s*(?:৳|tk\\.?)?\\s*${N}`, 'i'))?.[1]);
+  if (main && adv && Number(adv) < Number(main)) return String(Number(main) - Number(adv));
+  return main;
 }

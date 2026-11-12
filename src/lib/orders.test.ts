@@ -76,3 +76,10 @@ describe('Courier CSV exports', () => {
     expect(rows[1]).toEqual(['Parcel', 'A', '01712345678', 'Dhaka', 'Mirpur']);
   });
 });
+
+import { extractCod as _x } from './orders';
+describe('partial payments', () => {
+  it('uses baki amount, not smushed numbers', () => expect(_x('Price: 1200 tk (advance 200 bkash korci, baki 1000 cod)', 'Price: 1200 tk (advance 200 bkash korci, baki 1000 cod)')).toBe('1000'));
+  it('subtracts advance when no due given', () => expect(_x('Price: 1200 tk advance 200', 'Price: 1200 tk advance 200')).toBe('1000'));
+  it('plain COD stays total', () => expect(_x('COD: 1,450 tk', 'COD: 1,450 tk')).toBe('1450'));
+});
