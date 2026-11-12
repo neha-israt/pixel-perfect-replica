@@ -1,3 +1,4 @@
 - [x] Build the order parsing and editable dispatch workspace.
 - [x] Add validated courier CSV export and device-local batch history.
 - [x] Test parsing, exports, and the complete desktop/mobile workflow.
+- [x] Expand amount keywords, safe price fallback, and parenthetical-note handling; verify tests and order entry.

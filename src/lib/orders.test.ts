@@ -83,3 +83,31 @@ describe('partial payments', () => {
   it('subtracts advance when no due given', () => expect(_x('Price: 1200 tk advance 200', 'Price: 1200 tk advance 200')).toBe('1000'));
   it('plain COD stays total', () => expect(_x('COD: 1,450 tk', 'COD: 1,450 tk')).toBe('1450'));
 });
+
+describe('Amount variations', () => {
+  const block = (amount: string) => `Name: Rina Begum\nPhone: 01712345678\nAddress: House 12, Road 4, Dhaka\n${amount}`;
+  it.each(['Total Bill: 1450', 'Bill: 1450', 'taka 1450', 'tk: 1450', 'amount 1450', 'Price: ৳1450', 'COD: 1450'])('recognizes %s as total COD', amount => {
+    expect(requiredOrder(block(amount))).toMatchObject({ cod: '1450', product: '1390', address: 'House 12, Road 4, Dhaka' });
+  });
+  it.each(['1450', '1,200 tk', '৳ 1,200', 'Payment 1,200 tk', '১৪৫০'])('falls back to price %s', amount => {
+    expect(requiredOrder(block(amount)).cod).toBe(amount.includes('200') ? '1200' : '1450');
+  });
+  it('ignores parenthetical delivery instructions when extracting a bill', () => {
+    expect(requiredOrder(block('Total Bill: 1450 (Delivery charge advance niye na thakle add kore diben)'))).toMatchObject({ cod: '1450', product: '1390' });
+  });
+  it('ignores numbers inside instructional parentheses for fallback prices', () => {
+    expect(requiredOrder(block('(Delivery charge 110 add kore diben)\n1450')).cod).toBe('1450');
+  });
+  it('preserves partial-payment amounts inside parentheses', () => {
+    expect(requiredOrder(block('Price: 1200 tk (advance 200 bkash korci, baki 1000 cod)')).cod).toBe('1000');
+  });
+  it('subtracts advance from a bill if remaining due is not specified', () => {
+    expect(requiredOrder(block('Total Bill: 1200 (advance 200 bkash korci)')).cod).toBe('1000');
+  });
+  it('does not subtract advance again from a labeled COD', () => {
+    expect(requiredOrder(block('Price: 1200\nCOD: 1000 (advance 200 paid)')).cod).toBe('1000');
+  });
+  it('does not use phone or address numbers when the amount is missing', () => {
+    expect(requiredOrder(block('(Delivery charge 110 add kore diben)')).cod).toBe('');
+  });
+});
