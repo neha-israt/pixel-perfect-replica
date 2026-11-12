@@ -50,7 +50,7 @@ export function normalizeDigits(text: string) {
   return text.replace(/[০-৯]/g, digit => String('০১২৩৪৫৬৭৮৯'.indexOf(digit)));
 }
 
-const amountLabels = /^(?:total\s+bill|bill|cod(?: amount)?|cash(?: on delivery)?|amount|total|price|product(?: price| amount)?|taka|tk|টাকা|মূল্য|দাম)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*(?=\d)/i;
+const amountLabels = /^(?:grand\s+total|total\s+bill|bill|cod(?: amount)?|cash(?: on delivery)?|amount|total|price|product(?: price| amount)?|taka|tk|টাকা|মূল্য|দাম)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*(?=\d)/i;
 const withoutParentheses = (text: string) => {
   let clean = text;
   while (/\([^()]*\)/.test(clean)) clean = clean.replace(/\([^()]*\)/g, ' ');
@@ -78,18 +78,18 @@ export function parseOrders(text: string, start = 1): Order[] {
     let phone = rawPhone.replace(/\D/g, '');
     if (phone.startsWith('8801')) phone = phone.slice(2);
     const codLine = field(amountLabels);
-    const cod = extractCod(chunk, codLine);
     const name = field(/^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i) || lines.find(x => !/\d|[:：]|(?:tk|bdt)/i.test(x)) || '';
     const note = field(/^(?:note|instruction|নোট)\s*[:：-]\s*/i);
     const addressLabel = /^(?:address|addr|add|delivery address|ঠিকানা)\s*[:：-]\s*/i;
     const addressIndex = lines.findIndex(x => addressLabel.test(x));
-    const known = /^(?:name|recipient|customer|phone|phn|ph|mob|mobile|cell|contact|cod|cash|amount|total|bill|price|product|taka|tk|note|instruction|নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\b|^(?:নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\s*[:：]/i;
+    const known = /^(?:name|recipient|customer|phone|phn|ph|mob|mobile|cell|contact|cod|cash|amount|grand\s+total|total|bill|price|product|taka|tk|note|instruction|নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\b|^(?:নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\s*[:：]/i;
     const isMetadata = (line: string) => known.test(line) || standalonePrice.test(withoutParentheses(line)) || !withoutParentheses(line).trim();
     const address = addressIndex >= 0
       ? [(lines[addressIndex] ?? '').replace(addressLabel, ''), ...lines.slice(addressIndex + 1).filter(x => !isMetadata(x))].join(', ')
       : lines.filter(x => x !== name && !isMetadata(x) && !/(?:\+?88)?01[\d -]{7,}|(?:tk|bdt|টাকা|৳)/i.test(x)).join(', ');
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
+    const cod = extractCod(chunk, codLine, delivery);
     return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, product: productFromCod(cod, delivery), delivery, zone, cod, note };
   });
 }
@@ -130,8 +130,8 @@ export function templateCsv(headers: string[], rows: Record<string, string>[]) {
   return '\uFEFF' + [headers, ...rows.map(row => headers.map(h => row[h] ?? ''))].map(row => row.map(quote).join(',')).join('\r\n');
 }
 const num = (v?: string) => (v ? v.replace(/,/g, '') : '');
-/** Amount the courier collects: explicit due/baki/"N cod" wins, else price minus advance, else first listed amount. */
-export function extractCod(chunk: string, codLine = '') {
+/** Explicit collection amounts win; plain product prices include the supplied delivery only when no advance is stated. */
+export function extractCod(chunk: string, codLine = '', delivery = '0') {
   chunk = normalizeDigits(chunk);
   codLine = normalizeDigits(codLine);
   const N = '([\\d][\\d,]*(?:\\.\\d+)?)';
@@ -142,15 +142,18 @@ export function extractCod(chunk: string, codLine = '') {
   const cleanLines = withoutParentheses(chunk).split('\n').map(line => line.trim());
   // Never interpret a phone, house/road number, or instructional note as a fallback price.
   const candidates = cleanLines.filter(line => !/^(?:phone|phn|ph|mob(?:ile)?|cell|contact|address|addr|add|delivery address|note|instruction|ফোন|মোবাইল|নম্বর|ঠিকানা|নোট)\s*[:：-]/i.test(line));
-  const labeled = candidates.find(line => amountLabels.test(line))?.replace(amountLabels, '');
+  const totalLine = candidates.find(line => /^(?:grand\s+total|total(?:\s+bill)?)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*\d/i.test(line));
+  const labeledLine = totalLine || candidates.find(line => amountLabels.test(line));
+  const labeled = labeledLine?.replace(amountLabels, '');
   const explicitCod = candidates.find(line => /^(?:cod(?: amount)?|cash(?: on delivery)?)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*\d/i.test(line));
   // A labeled COD already states the remaining collection amount; do not subtract advance twice.
   if (explicitCod) return num(first(explicitCod.replace(amountLabels, '')));
   const currency = candidates.join('\n').match(/(?:^|[^\d,])(?:৳|\btk\.?|\bbdt)\s*(\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?)(?![\d,])/i)?.[1]
     || candidates.join('\n').match(/(?:^|[^\d,])(\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:৳|tk\b|taka\b|bdt\b|টাকা)/i)?.[1];
   const fallback = candidates.find(line => standalonePrice.test(line));
-  const main = num(first(withoutParentheses(codLine)) || first(labeled ?? '') || currency || first(fallback ?? ''));
+  const main = num(first(labeled ?? '') || first(withoutParentheses(codLine)) || currency || first(fallback ?? ''));
   const adv = num(chunk.match(new RegExp(`(?:advance|adv|agrim|অগ্রিম|paid)\\s*[:：-]?\\s*(?:৳|tk\\.?)?\\s*${N}`, 'i'))?.[1]);
   if (main && adv && Number(adv) < Number(main)) return String(Number(main) - Number(adv));
+  if (main && !adv && labeledLine && /^(?:price|product(?: price| amount)?)\b/i.test(labeledLine)) return computeCod(main, delivery);
   return main;
 }

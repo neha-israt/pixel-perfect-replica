@@ -26,7 +26,7 @@ describe('Order clean-up', () => {
   });
   it('ignores leading chat and reads abbreviated labels', () => {
     const order = requiredOrder('apu dress ta hobe?\nRina Begum\nphn: 01556-778899\naddr: Agrabad, Chattogram\nprice 1200 tk');
-    expect(order).toMatchObject({ name: 'Rina Begum', phone: '01556778899', address: 'Agrabad, Chattogram', cod: '1200', product: '1090' });
+    expect(order).toMatchObject({ name: 'Rina Begum', phone: '01556778899', address: 'Agrabad, Chattogram', cod: '1310', product: '1200' });
     expect(orderErrors(order)).toEqual([]);
   });
   it('defaults delivery to 60 inside Dhaka and 110 outside', () => {
@@ -86,7 +86,7 @@ describe('partial payments', () => {
 
 describe('Amount variations', () => {
   const block = (amount: string) => `Name: Rina Begum\nPhone: 01712345678\nAddress: House 12, Road 4, Dhaka\n${amount}`;
-  it.each(['Total Bill: 1450', 'Bill: 1450', 'taka 1450', 'tk: 1450', 'amount 1450', 'Price: ৳1450', 'COD: 1450'])('recognizes %s as total COD', amount => {
+  it.each(['Total Bill: 1450', 'Bill: 1450', 'taka 1450', 'tk: 1450', 'amount 1450', 'COD: 1450'])('recognizes %s as total COD', amount => {
     expect(requiredOrder(block(amount))).toMatchObject({ cod: '1450', product: '1390', address: 'House 12, Road 4, Dhaka' });
   });
   it.each(['1450', '1,200 tk', '৳ 1,200', 'Payment 1,200 tk', '১৪৫০'])('falls back to price %s', amount => {
@@ -109,5 +109,27 @@ describe('Amount variations', () => {
   });
   it('does not use phone or address numbers when the amount is missing', () => {
     expect(requiredOrder(block('(Delivery charge 110 add kore diben)')).cod).toBe('');
+  });
+});
+
+describe('Inclusive totals and exclusive prices', () => {
+  const block = (amount: string, address = 'Agrabad, Chattogram') => `Name: Rina Begum\nPhone: 01712345678\nAddress: ${address}\n${amount}`;
+  it.each(['Total Bill: 1450', 'Total: 1450', 'Grand Total: 1,450'])('subtracts delivery exactly once from %s', label => {
+    expect(requiredOrder(block(label))).toMatchObject({ cod: '1450', product: '1340', delivery: '110' });
+  });
+  it('adds delivery to a plain Price: 1200', () => {
+    expect(requiredOrder(block('Price: 1200'))).toMatchObject({ cod: '1310', product: '1200', delivery: '110' });
+  });
+  it('uses the inside-Dhaka rate for a product price with a currency prefix', () => {
+    expect(requiredOrder(block('Price: ৳1450', 'Dhaka'))).toMatchObject({ cod: '1510', product: '1450', delivery: '60' });
+  });
+  it('prioritizes an explicit total over a separate product price', () => {
+    expect(requiredOrder(block('Price: 1200\nTotal Bill: 1450'))).toMatchObject({ cod: '1450', product: '1340', address: 'Agrabad, Chattogram' });
+  });
+  it('keeps explicit partial-payment collection amounts inclusive', () => {
+    expect(requiredOrder(block('Price: 1200 tk (advance 200 bkash korci, baki 1000 cod)'))).toMatchObject({ cod: '1000', product: '890' });
+  });
+  it('does not add delivery again after subtracting an advance', () => {
+    expect(requiredOrder(block('Price: 1200 tk (advance 200 bkash korci)'))).toMatchObject({ cod: '1000', product: '890' });
   });
 });
