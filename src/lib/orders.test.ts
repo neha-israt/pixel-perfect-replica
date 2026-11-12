@@ -61,3 +61,18 @@ describe('Order clean-up', () => {
     expect(parseCsv(templateCsv(['RecipientZone', 'RecipientCity', 'RecipientPhone'], [{ RecipientZone: 'Mirpur', RecipientCity: 'Dhaka', RecipientPhone: '01812345678' }]))[1]).toEqual(['Mirpur', 'Dhaka', '01812345678']);
   });
 });
+describe('Courier CSV exports', () => {
+  it('Steadfast uses exact column order, Total COD and 11-digit phone with leading 0', () => {
+    const order = requiredOrder();
+    const rows = parseCsv(steadfastCsv([order]));
+    expect(rows[0]).toEqual(['Invoice', 'Recipient Name', 'Recipient Address', 'Recipient Phone', 'COD Amount', 'Note']);
+    expect(rows[1]?.[3]).toBe('01712345678');
+    expect(rows[1]?.[4]).toBe('1450');
+  });
+  it('Pathao keeps the uploaded template column order', () => {
+    const headers = ['ItemType', 'RecipientName', 'RecipientPhone', 'RecipientCity', 'RecipientZone'];
+    const rows = parseCsv(templateCsv(headers, [{ RecipientPhone: '01712345678', RecipientName: 'A', ItemType: 'Parcel', RecipientCity: 'Dhaka', RecipientZone: 'Mirpur' }]));
+    expect(rows[0]).toEqual(headers);
+    expect(rows[1]).toEqual(['Parcel', 'A', '01712345678', 'Dhaka', 'Mirpur']);
+  });
+});
