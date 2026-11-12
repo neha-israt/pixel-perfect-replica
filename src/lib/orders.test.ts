@@ -133,3 +133,38 @@ describe('Inclusive totals and exclusive prices', () => {
     expect(requiredOrder(block('Price: 1200 tk (advance 200 bkash korci)'))).toMatchObject({ cod: '1000', product: '890' });
   });
 });
+
+describe('Clean unlabeled addresses and product notes', () => {
+  it.each(['Assalamu Alaikum', 'As-salamu alaykum', 'Salam', 'Hi', 'Hello', 'Bhaiya', 'Apu', 'Hello!', 'Salam:'])('ignores greeting %s wherever it appears', greeting => {
+    const order = requiredOrder(`${greeting}\nRina Begum\nPhone: 01712345678\n${greeting}\nHouse 12, Road 4\nSylhet\n${greeting}\nTotal Bill: 1450`);
+    expect(order).toMatchObject({ name: 'Rina Begum', address: 'House 12, Road 4, Sylhet', note: '' });
+  });
+  it.each(['size: XL', 'color: black', '2 pcs', 'dress ta lagbe', 'hoodie set', '1 piece', 'Apu dress ta hobe?'])('moves %s into notes instead of the address', product => {
+    const order = requiredOrder(`Rina Begum\n${product}\nPhone: 01712345678\nRoad 4, Sylhet\nTotal Bill: 1450`);
+    expect(order).toMatchObject({ name: 'Rina Begum', address: 'Road 4, Sylhet', note: product });
+  });
+  it('keeps multiple product details alongside the existing merchant note', () => {
+    const order = requiredOrder('Name: Rina\nPhone: 01712345678\nhoodie size XL\ncolor black\nRoad 4\nSylhet Sadar\nNote: Call before delivery\nCOD: 1450');
+    expect(order).toMatchObject({ address: 'Road 4, Sylhet Sadar', note: 'hoodie size XL; color black; Call before delivery', cod: '1450' });
+    const row = parseCsv(steadfastCsv([order]))[1];
+    expect(row?.[2]).toBe('Road 4, Sylhet Sadar');
+    expect(row?.[5]).toBe('hoodie size XL; color black; Call before delivery');
+  });
+  it('accepts an unfamiliar locality directly below the phone and its continuation', () => {
+    expect(requiredOrder('Name: Rina\nPhone: 01712345678\nKazir Dewri\nBuilding 8/B\nCOD: 1450').address).toBe('Kazir Dewri, Building 8/B');
+  });
+  it('does not manufacture an address from greetings and item requests', () => {
+    const order = requiredOrder('Name: Rina\nPhone: 01712345678\nHello\nhoodie lagbe\nsize XL\nCOD: 1450');
+    expect(order).toMatchObject({ address: '', note: 'hoodie lagbe; size XL' });
+    expect(orderErrors(order)).toContain('address');
+  });
+  it('gives location keywords priority over overlapping item words', () => {
+    expect(requiredOrder('Name: Rina\nPhone: 01712345678\nHouse 2, Block A, Dress Road\nSylhet\nCOD: 1450')).toMatchObject({ address: 'House 2, Block A, Dress Road, Sylhet', note: '' });
+  });
+  it('also keeps product descriptions out of labeled address continuations', () => {
+    expect(requiredOrder('Name: Rina\nPhone: 01712345678\nAddress: Kazir Dewri\nhoodie size XL\nSylhet\nCOD: 1450')).toMatchObject({ address: 'Kazir Dewri, Sylhet', note: 'hoodie size XL' });
+  });
+  it('rejects unrelated openers while recognizing Bangla location details', () => {
+    expect(requiredOrder('Hello\nName: Rina\nThank you so much\nPhone: 01712345678\nবাড়ি ১২, মিরপুর\nঢাকা\nড্রেস লাগবে\nCOD: 1450')).toMatchObject({ address: 'বাড়ি 12, মিরপুর, ঢাকা', note: 'ড্রেস লাগবে' });
+  });
+});
