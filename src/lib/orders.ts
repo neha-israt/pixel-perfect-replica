@@ -1,5 +1,5 @@
 export type Zone = 'inside' | 'outside';
-export type Order = { id: string; invoice: string; name: string; phone: string; address: string; product: string; delivery: string; zone: Zone; cod: string; note: string };
+export type Order = { id: string; invoice: string; name: string; phone: string; address: string; item: string; qty: string; product: string; delivery: string; zone: Zone; cod: string; note: string };
 /** Default courier base rates in BDT (Pathao/Steadfast standard parcel benchmarks). */
 export const deliveryRates: Record<Zone, number> = { inside: 60, outside: 110 };
 export const zoneLabels: Record<Zone, string> = { inside: 'Inside Dhaka', outside: 'Outside Dhaka' };
@@ -58,8 +58,29 @@ const withoutParentheses = (text: string) => {
 };
 const standalonePrice = /^\s*(?:৳|tk\.?|bdt)?\s*\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?\s*(?:৳|tk\.?|taka|bdt|টাকা)?\s*$/i;
 const locationWords = /\b(?:road|rd|house|holding|flat|floor|sector|block|area|thana|sadar|district|village|union|upazila|upazilla|bazar|bazaar|lane|avenue|para|mohalla|dhaka|dhanmondi|mirpur|uttara|agrabad|chattogram|chittagong|sylhet|rajshahi|khulna|barishal|barisal|rangpur|mymensingh|cumilla|comilla|cox'?s bazar|gazipur|narayanganj|narsingdi|tangail|kishoreganj|manikganj|munshiganj|faridpur|gopalganj|madaripur|rajbari|shariatpur|bogura|bogra|joypurhat|naogaon|natore|chapainawabganj|pabna|sirajganj|dinajpur|gaibandha|kurigram|lalmonirhat|nilphamari|panchagarh|thakurgaon|bagerhat|chuadanga|jashore|jessore|jhenaidah|kushtia|magura|meherpur|narail|satkhira|bhola|barguna|jhalokati|patuakhali|pirojpur|bandarban|brahmanbaria|chandpur|feni|khagrachhari|lakshmipur|noakhali|rangamati|habiganj|moulvibazar|sunamganj|jamalpur|netrokona|sherpur)\b|(?:রোড|রাস্তা|বাড়ি|বাড়ি|বাসা|সেক্টর|ব্লক|এলাকা|থানা|সদর|জেলা|গ্রাম|বাজার|ঢাকা|মিরপুর|চট্টগ্রাম|সিলেট|খুলনা|রাজশাহী|বরিশাল|রংপুর|ময়মনসিংহ)/i;
-const itemWords = /\b(?:item|size|colou?r|ta|piece|pieces|pcs|lagbe|hoodie|dress|set|shirt|tshirt|t-shirt|pant|saree|order)\b|(?:সাইজ|রং|কালার|পিস|লাগবে|হুডি|ড্রেস)/i;
+const itemWords = /\b(?:item|product|qty|quantity|size|colou?r|ta|piece|pieces|pcs|lagbe|hoodie|dress|ring|kettle|set|shirt|tshirt|t-shirt|pant|saree|order)\b|(?:সাইজ|রং|কালার|পিস|লাগবে|হুডি|ড্রেস|পণ্য|পরিমাণ|আংটি|কেটলি)/i;
 const greetingOpener = /\b(?:as[\s-]*salamu\s+(?:alaikum|alaykum)|assalamu\s+(?:alaikum|alaykum)|salam|hi|hello|bhaiya|bhai|vai|apu)\b|(?:আসসালামু\s*আলাইকুম|সালাম|ভাইয়া|ভাইয়া|আপু)(?:\s|[!,.।]|$)/i;
+
+/** Item descriptions and quantities are independent of money, phones and locations. */
+export function extractItemDetails(text: string): Pick<Order, 'item' | 'qty'> {
+  const lines = normalizeDigits(text).split('\n').map(line => line.trim());
+  const itemLabel = /^(?:item(?: name)?|product(?: name)?|পণ্য)\s*[:：-]\s*/i;
+  const noun = /\b(?:hoodie|dress|ring|kettle|shirt|t-?shirt|pants?|saree|set)\b|(?:হুডি|ড্রেস|আংটি|কেটলি)/i;
+  const candidates = lines.filter(line => !amountLabels.test(line) && !/^(?:name|recipient|customer|phone|phn|mob(?:ile)?|address|addr|add|note|instruction|নাম|ফোন|ঠিকানা|নোট)\s*[:：-]/i.test(line) && (itemLabel.test(line) || !locationWords.test(line)));
+  const qtyLabel = /^(?:qty|quantity|পরিমাণ)\s*[:：-]?\s*(\d+)\b/i;
+  const unitQty = /\b(\d+)\s*(?:pcs?|pieces?|units?)\b|(\d+)\s*পিস/i;
+  const itemLine = candidates.find(line => itemLabel.test(line)) || candidates.find(line => noun.test(line)) || '';
+  const count = candidates.map(line => line.match(qtyLabel)?.[1] || line.match(unitQty)?.[1] || line.match(unitQty)?.[2]).find(Boolean)
+    || itemLine.match(/(?:^|\s)(\d+)\s*(?:x\s*)?(?=(?:black|white|blue|red|green|hoodie|dress|ring|kettle|shirt|saree)\b)/i)?.[1]
+    || itemLine.match(/\bx\s*(\d+)\b/i)?.[1];
+  let item = itemLine.replace(itemLabel, '').replace(/^.*?\b(?:apu|bhaiya|bhai|vai)\b[\s,:-]*/i, '')
+    .replace(/\b\d+\s*(?:pcs?|pieces?|units?)\b|(\d+)\s*পিস/gi, '').replace(/^\d+\s*(?:x\s*)?/i, '')
+    .replace(/\bx\s*\d+\b/gi, '').replace(/\b(?:ta|lagbe|hobe|please|plz|send|want|need)\b/gi, '')
+    .replace(/\bsize\s*[:：-]?\s*\S+/gi, '').replace(/[?？]/g, '').replace(/\s+/g, ' ').trim();
+  const color = candidates.find(line => /^(?:colou?r|কালার|রং)\s*[:：-]?/i.test(line))?.replace(/^(?:colou?r|কালার|রং)\s*[:：-]?\s*/i, '').trim();
+  if (item && color && !item.toLowerCase().includes(color.toLowerCase())) item = `${color} ${item}`;
+  return { item, qty: count && Number(count) > 0 ? String(Number(count)) : '1' };
+}
 
 export function parseOrders(text: string, start = 1): Order[] {
   const normalized = normalizeDigits(text).replace(/\r/g, '').trim();
@@ -111,7 +132,7 @@ export function parseOrders(text: string, start = 1): Order[] {
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
     const cod = extractCod(chunk, codLine, delivery);
-    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, product: productFromCod(cod, delivery), delivery, zone, cod, note };
+    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, ...extractItemDetails(rawChunk), product: productFromCod(cod, delivery), delivery, zone, cod, note };
   });
 }
 
@@ -123,6 +144,7 @@ export function orderErrors(order: Order): string[] {
   if (!order.cod.trim() || !Number.isFinite(Number(order.cod)) || Number(order.cod) < 0) errors.push('cod');
   if (!order.product.trim() || !Number.isFinite(Number(order.product)) || Number(order.product) < 0) errors.push('product');
   if (!order.delivery.trim() || !Number.isFinite(Number(order.delivery)) || Number(order.delivery) < 0) errors.push('delivery');
+  if (!/^\d+$/.test(order.qty ?? '1') || Number(order.qty ?? '1') < 1) errors.push('qty');
   return errors;
 }
 

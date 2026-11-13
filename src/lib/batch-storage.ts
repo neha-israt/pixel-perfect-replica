@@ -3,7 +3,7 @@ const key = 'orderclean-batches-v1';
 export function readBatches(): Batch[] {
   const data = JSON.parse(localStorage.getItem(key) || '[]');
   if (!Array.isArray(data)) return [];
-  return data.filter((batch: Batch) => typeof batch.id === 'string' && typeof batch.date === 'string' && Array.isArray(batch.orders));
+  return data.filter((batch: Batch) => typeof batch.id === 'string' && typeof batch.date === 'string' && Array.isArray(batch.orders)).map((batch: Batch) => ({ ...batch, orders: batch.orders.map(order => ({ ...order, item: order.item ?? '', qty: order.qty ?? '1' })) }));
 }
 export function saveBatch(batch: Batch) {
   localStorage.setItem(key, JSON.stringify([batch, ...readBatches()]));

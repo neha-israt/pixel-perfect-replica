@@ -3,3 +3,4 @@
 - [x] Test parsing, exports, and the complete desktop/mobile workflow.
 - [x] Expand amount keywords, safe price fallback, and parenthetical-note handling; verify tests and order entry.
 - [x] Keep recipient cards limited to identity fields and route non-address conversation and item details to Notes; verify parsing and editing.
+- [x] Separate Amount from editable Item and Qty, parse item details, and verify compact laptop/mobile editing.

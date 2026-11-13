@@ -190,3 +190,32 @@ describe('Conversation routing to Notes', () => {
     expect(row?.[5]).toBe('As-salamu alaykum; hoodie size XL; color black; Call first');
   });
 });
+
+
+describe('Item names and quantities', () => {
+  const block = (detail: string) => `Name: Rina\nPhone: 01712345678\n${detail}\nRoad 4, Sylhet\nTotal Bill: 1450`;
+  it.each(['black hoodie', 'ring', 'kettle'])('extracts %s separately from money and identity', item => {
+    expect(requiredOrder(block(item))).toMatchObject({ name: 'Rina', item, qty: '1', address: 'Road 4, Sylhet', cod: '1450', product: '1340' });
+  });
+  it.each(['2 black hoodie', 'black hoodie 2 pcs', 'black hoodie x2', 'Item: black hoodie\nQty: 2'])('extracts quantity from %s', detail => {
+    expect(requiredOrder(block(detail))).toMatchObject({ item: 'black hoodie', qty: '2' });
+  });
+  it('uses separate color and quantity lines without putting size in the item name', () => {
+    expect(requiredOrder(block('Apu hoodie size XL lagbe\ncolor: black\nQuantity: 3'))).toMatchObject({ item: 'black hoodie', qty: '3' });
+  });
+  it('normalizes Bangla quantity digits', () => {
+    expect(requiredOrder(block('Item: kettle\n২ পিস'))).toMatchObject({ item: 'kettle', qty: '2' });
+  });
+  it('accepts unknown item names with an explicit label', () => {
+    expect(requiredOrder(block('Product: travel mug\nQty: 4'))).toMatchObject({ item: 'travel mug', qty: '4' });
+  });
+  it('defaults absent items to blank and quantity to one, never using phone/address/bill numbers', () => {
+    expect(requiredOrder(block('House 2, Ring Road'))).toMatchObject({ item: '', qty: '1', cod: '1450' });
+  });
+  it('item and quantity edits do not multiply or otherwise change the agreed monetary amount', () => {
+    expect(applyEdit(requiredOrder(block('ring')), { item: 'kettle', qty: '3' })).toMatchObject({ item: 'kettle', qty: '3', cod: '1450', product: '1340', delivery: '110' });
+  });
+  it.each(['0', '-1', '1.5', ''])('rejects invalid quantity %s', qty => {
+    expect(orderErrors({ ...requiredOrder(block('ring')), qty })).toContain('qty');
+  });
+});
