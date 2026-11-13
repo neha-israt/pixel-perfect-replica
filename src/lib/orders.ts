@@ -59,7 +59,7 @@ const withoutParentheses = (text: string) => {
 const standalonePrice = /^\s*(?:৳|tk\.?|bdt)?\s*\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?\s*(?:৳|tk\.?|taka|bdt|টাকা)?\s*$/i;
 const locationWords = /\b(?:road|rd|house|holding|flat|floor|sector|block|area|thana|sadar|district|village|union|upazila|upazilla|bazar|bazaar|lane|avenue|para|mohalla|dhaka|dhanmondi|mirpur|uttara|agrabad|chattogram|chittagong|sylhet|rajshahi|khulna|barishal|barisal|rangpur|mymensingh|cumilla|comilla|cox'?s bazar|gazipur|narayanganj|narsingdi|tangail|kishoreganj|manikganj|munshiganj|faridpur|gopalganj|madaripur|rajbari|shariatpur|bogura|bogra|joypurhat|naogaon|natore|chapainawabganj|pabna|sirajganj|dinajpur|gaibandha|kurigram|lalmonirhat|nilphamari|panchagarh|thakurgaon|bagerhat|chuadanga|jashore|jessore|jhenaidah|kushtia|magura|meherpur|narail|satkhira|bhola|barguna|jhalokati|patuakhali|pirojpur|bandarban|brahmanbaria|chandpur|feni|khagrachhari|lakshmipur|noakhali|rangamati|habiganj|moulvibazar|sunamganj|jamalpur|netrokona|sherpur)\b|(?:রোড|রাস্তা|বাড়ি|বাড়ি|বাসা|সেক্টর|ব্লক|এলাকা|থানা|সদর|জেলা|গ্রাম|বাজার|ঢাকা|মিরপুর|চট্টগ্রাম|সিলেট|খুলনা|রাজশাহী|বরিশাল|রংপুর|ময়মনসিংহ)/i;
 const itemWords = /\b(?:item|size|colou?r|ta|piece|pieces|pcs|lagbe|hoodie|dress|set|shirt|tshirt|t-shirt|pant|saree|order)\b|(?:সাইজ|রং|কালার|পিস|লাগবে|হুডি|ড্রেস)/i;
-const greetingOpener = /^(?:as[\s-]*salamu\s+(?:alaikum|alaykum)|assalamu\s+(?:alaikum|alaykum)|salam|hi|hello|bhaiya|bhai|vai|apu)\b|^(?:আসসালামু\s*আলাইকুম|সালাম|ভাইয়া|ভাইয়া|আপু)(?:\s|[!,.।]|$)/i;
+const greetingOpener = /\b(?:as[\s-]*salamu\s+(?:alaikum|alaykum)|assalamu\s+(?:alaikum|alaykum)|salam|hi|hello|bhaiya|bhai|vai|apu)\b|(?:আসসালামু\s*আলাইকুম|সালাম|ভাইয়া|ভাইয়া|আপু)(?:\s|[!,.।]|$)/i;
 
 export function parseOrders(text: string, start = 1): Order[] {
   const normalized = normalizeDigits(text).replace(/\r/g, '').trim();
@@ -70,10 +70,11 @@ export function parseOrders(text: string, start = 1): Order[] {
   const useful = chunks.filter(chunk => phoneRe.test(chunk) || chunk.split('\n').filter(x => keyLine.test(x.trim())).length >= 2);
   return useful.map((rawChunk, i) => {
     const allLines = rawChunk.split('\n').map(x => x.trim()).filter(Boolean);
-    // Preserve item requests (even questions/openers) for notes, not addresses.
+    // Keep conversation and item requests in Notes, never identity fields.
     const isItem = (x: string) => itemWords.test(x) && !locationWords.test(x) && !amountLabels.test(x);
     const chatter = (x: string) => !isItem(x) && (greetingOpener.test(x) || /[?？]|\b(?:hobe|ache|please|plz)\b/i.test(x)) && !phoneRe.test(x) && !/^(?:name|recipient|customer|address|addr|add|note|instruction|নাম|ঠিকানা|নোট)\s*[:：-]/i.test(x);
-    const lines = allLines.filter(x => !chatter(x));
+    const noteOnly = (x: string) => greetingOpener.test(x) || isItem(x) || (chatter(x) && !locationWords.test(x));
+    const lines = allLines.filter(x => !noteOnly(x));
     const chunk = lines.join('\n');
     const field = (pattern: RegExp) => lines.find(x => pattern.test(x))?.replace(pattern, '').trim() ?? '';
     const phoneLine = field(/^(?:phone(?: number)?|phn|ph|mob(?:ile)?|cell|contact|ফোন|মোবাইল|নম্বর)\s*[:：-]\s*/i);
@@ -87,26 +88,25 @@ export function parseOrders(text: string, start = 1): Order[] {
     const addressIndex = lines.findIndex(x => addressLabel.test(x));
     const known = /^(?:name|recipient|customer|phone|phn|ph|mob|mobile|cell|contact|cod|cash|amount|grand\s+total|total|bill|price|product|taka|tk|note|instruction|নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\b|^(?:নাম|ফোন|মোবাইল|নম্বর|টাকা|মূল্য|দাম|নোট)\s*[:：]/i;
     const isMetadata = (line: string) => known.test(line) || standalonePrice.test(withoutParentheses(line)) || !withoutParentheses(line).trim();
-    const productLines = lines.filter(x => x !== name && !isMetadata(x) && !addressLabel.test(x) && isItem(x));
-    const note = lines.filter(x => noteLabel.test(x) || productLines.includes(x)).map(x => x.replace(noteLabel, '')).join('; ');
     const phoneIndex = lines.findIndex(x => phoneRe.test(x));
+    const matchedPhoneLine = lines[phoneIndex];
     const addressParts: string[] = [];
-    let continuation = false;
+    const addressLines = new Set<string>();
     lines.forEach((line, index) => {
       if (index === addressIndex) {
         addressParts.push(line.replace(addressLabel, ''));
-        continuation = true;
+        addressLines.add(line);
         return;
       }
-      if (line === name || isMetadata(line) || productLines.includes(line) || phoneRe.test(line) || /(?:tk|bdt|টাকা|৳)/i.test(line)) {
-        continuation = false;
-        return;
-      }
-      if (locationWords.test(line) || index === phoneIndex + 1 || continuation) {
+      if (line === name || isMetadata(line) || phoneRe.test(line) || /(?:tk|bdt|টাকা|৳)/i.test(line)) return;
+      // Filtering must not make a later chat line appear directly below the phone.
+      const directlyBelowPhone = matchedPhoneLine !== undefined && index === phoneIndex + 1 && allLines.indexOf(line) === allLines.indexOf(matchedPhoneLine) + 1;
+      if (locationWords.test(line) || /\bbuilding\b/i.test(line) || directlyBelowPhone) {
         addressParts.push(line);
-        continuation = true;
+        addressLines.add(line);
       }
     });
+    const note = allLines.filter(line => noteOnly(line) || noteLabel.test(line) || (line !== name && !isMetadata(line) && !addressLines.has(line) && !phoneRe.test(line) && !/(?:tk|bdt|টাকা|৳)/i.test(line))).map(line => line.replace(noteLabel, '')).join('; ');
     const address = addressParts.join(', ');
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);

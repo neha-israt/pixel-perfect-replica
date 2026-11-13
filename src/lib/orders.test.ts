@@ -137,7 +137,7 @@ describe('Inclusive totals and exclusive prices', () => {
 describe('Clean unlabeled addresses and product notes', () => {
   it.each(['Assalamu Alaikum', 'As-salamu alaykum', 'Salam', 'Hi', 'Hello', 'Bhaiya', 'Apu', 'Hello!', 'Salam:'])('ignores greeting %s wherever it appears', greeting => {
     const order = requiredOrder(`${greeting}\nRina Begum\nPhone: 01712345678\n${greeting}\nHouse 12, Road 4\nSylhet\n${greeting}\nTotal Bill: 1450`);
-    expect(order).toMatchObject({ name: 'Rina Begum', address: 'House 12, Road 4, Sylhet', note: '' });
+    expect(order).toMatchObject({ name: 'Rina Begum', address: 'House 12, Road 4, Sylhet', note: `${greeting}; ${greeting}; ${greeting}` });
   });
   it.each(['size: XL', 'color: black', '2 pcs', 'dress ta lagbe', 'hoodie set', '1 piece', 'Apu dress ta hobe?'])('moves %s into notes instead of the address', product => {
     const order = requiredOrder(`Rina Begum\n${product}\nPhone: 01712345678\nRoad 4, Sylhet\nTotal Bill: 1450`);
@@ -155,7 +155,7 @@ describe('Clean unlabeled addresses and product notes', () => {
   });
   it('does not manufacture an address from greetings and item requests', () => {
     const order = requiredOrder('Name: Rina\nPhone: 01712345678\nHello\nhoodie lagbe\nsize XL\nCOD: 1450');
-    expect(order).toMatchObject({ address: '', note: 'hoodie lagbe; size XL' });
+    expect(order).toMatchObject({ address: '', note: 'Hello; hoodie lagbe; size XL' });
     expect(orderErrors(order)).toContain('address');
   });
   it('gives location keywords priority over overlapping item words', () => {
@@ -165,6 +165,28 @@ describe('Clean unlabeled addresses and product notes', () => {
     expect(requiredOrder('Name: Rina\nPhone: 01712345678\nAddress: Kazir Dewri\nhoodie size XL\nSylhet\nCOD: 1450')).toMatchObject({ address: 'Kazir Dewri, Sylhet', note: 'hoodie size XL' });
   });
   it('rejects unrelated openers while recognizing Bangla location details', () => {
-    expect(requiredOrder('Hello\nName: Rina\nThank you so much\nPhone: 01712345678\nবাড়ি ১২, মিরপুর\nঢাকা\nড্রেস লাগবে\nCOD: 1450')).toMatchObject({ address: 'বাড়ি 12, মিরপুর, ঢাকা', note: 'ড্রেস লাগবে' });
+    expect(requiredOrder('Hello\nName: Rina\nThank you so much\nPhone: 01712345678\nবাড়ি ১২, মিরপুর\nঢাকা\nড্রেস লাগবে\nCOD: 1450')).toMatchObject({ address: 'বাড়ি 12, মিরপুর, ঢাকা', note: 'Thank you so much; ড্রেস লাগবে' });
+  });
+});
+
+
+describe('Conversation routing to Notes', () => {
+  it.each(['As-salamu alaykum', 'Assalamu Alaikum', 'Bhaiya', 'Apu'])('routes embedded opener %s out of recipient and address', opener => {
+    const order = requiredOrder(`Name: Rina Begum\nPhone: 01712345678\nThanks ${opener}, send it soon\nHouse 12, Road 4\nSylhet\nCOD: 1450`);
+    expect(order).toMatchObject({ name: 'Rina Begum', phone: '01712345678', address: 'House 12, Road 4, Sylhet', note: `Thanks ${opener}, send it soon` });
+  });
+  it('keeps unmatched lines after a location in Notes, not address continuations', () => {
+    const order = requiredOrder('Name: Rina\nPhone: 01712345678\nRoad 4, Sylhet\nPlease send the blue one\nGift wrapping needed\nCOD: 1450');
+    expect(order).toMatchObject({ address: 'Road 4, Sylhet', note: 'Please send the blue one; Gift wrapping needed' });
+  });
+  it('does not expose the next unknown line as an address after removing an opener', () => {
+    expect(requiredOrder('Name: Rina\nPhone: 01712345678\nApu\nGift wrapping needed\nCOD: 1450')).toMatchObject({ address: '', note: 'Apu; Gift wrapping needed' });
+  });
+  it('preserves greeting and item notes in the courier export', () => {
+    const order = requiredOrder('Name: Rina\nPhone: 01712345678\nAs-salamu alaykum\nhoodie size XL\ncolor black\nRoad 4, Sylhet\nNote: Call first\nCOD: 1450');
+    const row = parseCsv(steadfastCsv([order]))[1];
+    expect(row?.[1]).toBe('Rina');
+    expect(row?.[2]).toBe('Road 4, Sylhet');
+    expect(row?.[5]).toBe('As-salamu alaykum; hoodie size XL; color black; Call first');
   });
 });
