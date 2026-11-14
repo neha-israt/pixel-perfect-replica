@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { parseCsv, templateCsv, type Order } from '@/lib/orders';
 
-function fieldKey(header: string): keyof Order | undefined {
+function fieldKey(header: string): 'invoice' | 'name' | 'phone' | 'address' | 'cod' | 'note' | undefined {
   const h = header.toLowerCase().replace(/[^a-z]/g, '');
   if (/invoice|merchantorder|orderid/.test(h)) return 'invoice';
   if (/recipientname|customername/.test(h)) return 'name';
