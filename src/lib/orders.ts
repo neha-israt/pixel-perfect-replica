@@ -61,25 +61,20 @@ const locationWords = /\b(?:road|rd|house|holding|flat|floor|sector|block|area|t
 const itemWords = /\b(?:item|product|qty|quantity|size|colou?r|ta|piece|pieces|pcs|lagbe|hoodie|dress|ring|kettle|set|shirt|tshirt|t-shirt|pant|saree|order)\b|(?:সাইজ|রং|কালার|পিস|লাগবে|হুডি|ড্রেস|পণ্য|পরিমাণ|আংটি|কেটলি)/i;
 const greetingOpener = /\b(?:as[\s-]*salamu\s+(?:alaikum|alaykum)|assalamu\s+(?:alaikum|alaykum)|salam|hi|hello|bhaiya|bhai|vai|apu)\b|(?:আসসালামু\s*আলাইকুম|সালাম|ভাইয়া|ভাইয়া|আপু)(?:\s|[!,.।]|$)/i;
 
-/** Item descriptions and quantities are independent of money, phones and locations. */
-export function extractItemDetails(text: string): Pick<Order, 'item' | 'qty'> {
+/** Quantities are read from the message; the item name is always typed by the seller. */
+export function extractQuantity(text: string): string {
   const lines = normalizeDigits(text).split('\n').map(line => line.trim());
   const itemLabel = /^(?:item(?: name)?|product(?: name)?|পণ্য)\s*[:：-]\s*/i;
+  // Nouns are only a hint for reading a quantity ("2 black hoodie", "hoodie x2"); no item name is ever produced here.
   const noun = /\b(?:hoodie|dress|ring|kettle|shirt|t-?shirt|pants?|saree|set)\b|(?:হুডি|ড্রেস|আংটি|কেটলি)/i;
   const candidates = lines.filter(line => !amountLabels.test(line) && !/^(?:name|recipient|customer|phone|phn|mob(?:ile)?|address|addr|add|note|instruction|নাম|ফোন|ঠিকানা|নোট)\s*[:：-]/i.test(line) && (itemLabel.test(line) || !locationWords.test(line)));
   const qtyLabel = /^(?:qty|quantity|পরিমাণ)\s*[:：-]?\s*(\d+)\b/i;
   const unitQty = /\b(\d+)\s*(?:pcs?|pieces?|units?)\b|(\d+)\s*পিস/i;
-  const itemLine = candidates.find(line => itemLabel.test(line)) || candidates.find(line => noun.test(line)) || '';
+  const itemLine = candidates.find(line => noun.test(line)) || '';
   const count = candidates.map(line => line.match(qtyLabel)?.[1] || line.match(unitQty)?.[1] || line.match(unitQty)?.[2]).find(Boolean)
     || itemLine.match(/(?:^|\s)(\d+)\s*(?:x\s*)?(?=(?:black|white|blue|red|green|hoodie|dress|ring|kettle|shirt|saree)\b)/i)?.[1]
     || itemLine.match(/\bx\s*(\d+)\b/i)?.[1];
-  let item = itemLine.replace(itemLabel, '').replace(/^.*?\b(?:apu|bhaiya|bhai|vai)\b[\s,:-]*/i, '')
-    .replace(/\b\d+\s*(?:pcs?|pieces?|units?)\b|(\d+)\s*পিস/gi, '').replace(/^\d+\s*(?:x\s*)?/i, '')
-    .replace(/\bx\s*\d+\b/gi, '').replace(/\b(?:ta|lagbe|hobe|please|plz|send|want|need)\b/gi, '')
-    .replace(/\bsize\s*[:：-]?\s*\S+/gi, '').replace(/[?？]/g, '').replace(/\s+/g, ' ').trim();
-  const color = candidates.find(line => /^(?:colou?r|কালার|রং)\s*[:：-]?/i.test(line))?.replace(/^(?:colou?r|কালার|রং)\s*[:：-]?\s*/i, '').trim();
-  if (item && color && !item.toLowerCase().includes(color.toLowerCase())) item = `${color} ${item}`;
-  return { item, qty: count && Number(count) > 0 ? String(Number(count)) : '1' };
+  return count && Number(count) > 0 ? String(Number(count)) : '1';
 }
 
 export function parseOrders(text: string, start = 1): Order[] {
@@ -132,7 +127,7 @@ export function parseOrders(text: string, start = 1): Order[] {
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
     const cod = extractCod(chunk, codLine, delivery);
-    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, ...extractItemDetails(rawChunk), product: productFromCod(cod, delivery), delivery, zone, cod, note };
+    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, item: '', qty: extractQuantity(rawChunk), product: productFromCod(cod, delivery), delivery, zone, cod, note };
   });
 }
 

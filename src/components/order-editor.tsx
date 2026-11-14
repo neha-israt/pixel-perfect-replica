@@ -14,7 +14,7 @@ export function OrderEditor({ order, onClose, onSave }: { order: Order; onClose:
     {(['name', 'phone', 'address'] as const).map(key => <label key={key} className="field-label">{labels[key]}{key === 'address' ? <textarea aria-label={labels[key]} className={cls(key)} value={draft[key]} onChange={e => set({ [key]: e.target.value })}/> : <input aria-label={labels[key]} className={cls(key)} value={draft[key]} onChange={e => set({ [key]: e.target.value })}/>}{key === 'phone' && errors.includes(key) && <span className="text-destructive text-[11px]">Enter 11 digits starting with 01.</span>}</label>)}
     <label className="field-label">Delivery zone<select aria-label="Delivery zone" className="field-input" value={draft.zone} onChange={e => { const zone = e.target.value as Zone; set({ zone, delivery: String(deliveryRates[zone]) }); }}>{(Object.keys(zoneLabels) as Zone[]).map(z => <option key={z} value={z}>{zoneLabels[z]} (৳{deliveryRates[z]})</option>)}</select></label>
     <div className="grid grid-cols-[minmax(0,1fr)_5rem] gap-3">
-      <label className="field-label">Item / Product<input aria-label="Item / Product" className="field-input" value={draft.item ?? ''} onChange={e => set({ item: e.target.value })}/></label>
+      <label className="field-label">Item / Product<input aria-label="Item / Product" className="field-input" placeholder="Type item name" value={draft.item ?? ''} onChange={e => set({ item: e.target.value })}/></label>
       <label className="field-label">Qty<input aria-label="Qty" type="number" min={1} step={1} className={cls('qty')} value={draft.qty ?? '1'} onChange={e => set({ qty: e.target.value })}/></label>
     </div>
     <div className="grid grid-cols-2 gap-3">

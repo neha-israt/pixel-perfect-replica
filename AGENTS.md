@@ -34,4 +34,4 @@ use the editor.
 - Use device-local storage for exported batches as explicitly permitted in the product brief; read it after hydration and report storage failures.
 - Preserve Pathao's uploaded current sample header and require remaining fields instead of guessing its private merchant template.
 - Use the shared workspace shell for content routes to keep navigation and device-privacy status consistent.
-- Keep item names and quantities separate from monetary product amounts; normalize older device-local orders on read so new fields do not break saved batches.
+- Keep the item name seller-typed (never auto-extracted from chat text) and quantities separate from monetary product amounts; normalize older device-local orders on read so new fields do not break saved batches.
