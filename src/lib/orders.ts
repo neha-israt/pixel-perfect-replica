@@ -1,5 +1,5 @@
 export type Zone = 'inside' | 'outside';
-export type Order = { id: string; invoice: string; name: string; phone: string; address: string; item: string; qty: string; product: string; delivery: string; zone: Zone; cod: string; note: string };
+export type Order = { id: string; invoice: string; name: string; phone: string; address: string; item: string; qty: string; product: string; delivery: string; zone: Zone; cod: string; note: string; rawText?: string; duplicateConfirmed?: boolean };
 /** Default courier base rates in BDT (Pathao/Steadfast standard parcel benchmarks). */
 export const deliveryRates: Record<Zone, number> = { inside: 60, outside: 110 };
 export const zoneLabels: Record<Zone, string> = { inside: 'Inside Dhaka', outside: 'Outside Dhaka' };
@@ -127,7 +127,7 @@ export function parseOrders(text: string, start = 1): Order[] {
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
     const cod = extractCod(chunk, codLine, delivery);
-    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, item: '', qty: extractQuantity(rawChunk), product: productFromCod(cod, delivery), delivery, zone, cod, note };
+    return { id: `order-${Date.now()}-${start + i}`, invoice: `OC-${String(start + i).padStart(4, '0')}`, name, phone, address, item: '', qty: extractQuantity(rawChunk), product: productFromCod(cod, delivery), delivery, zone, cod, note, rawText: rawChunk.trim() };
   });
 }
 

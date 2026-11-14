@@ -35,3 +35,4 @@ use the editor.
 - Preserve Pathao's uploaded current sample header and require remaining fields instead of guessing its private merchant template.
 - Use the shared workspace shell for content routes to keep navigation and device-privacy status consistent.
 - Keep the item name seller-typed (never auto-extracted from chat text) and quantities separate from monetary product amounts; normalize older device-local orders on read so new fields do not break saved batches.
+- Keep duplicate matching and sequential submission decisions in a browser-safe pure module; pause each repeat before insertion so multiple pasted orders share the same tested safeguards.
