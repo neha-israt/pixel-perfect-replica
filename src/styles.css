@@ -279,10 +279,14 @@ input[type=checkbox] { accent-color:var(--primary);width:14px;height:14px;cursor
 .dispatch-table .item-input, .dispatch-table .qty-input { height:2rem; min-width:0; }
 .dispatch-table .zone-select { width:100%; min-width:0; padding-left:5px; }
 .dispatch-table .address-input { resize:vertical; min-height:3rem; }
+.product-autocomplete { width:100%; min-width:0; }
+.product-suggestions { width:max(15rem, var(--radix-popover-trigger-width)); max-width:calc(100vw - 24px); }
 .dispatch-table .tag { padding:5px; gap:3px; font-size:10px; }
 @media (max-width:1000px) {
   .dispatch-table { min-width:0; }
   .dispatch-table .field-input { width:65%; }
+  .dispatch-table .product-autocomplete { width:65%; }
+  .dispatch-table .product-autocomplete .field-input { width:100%; }
   .dispatch-table .qty-input { width:4rem; }
   .dispatch-table .amount-input, .dispatch-table .amount-input.total { width:5.5rem; }
   .dispatch-table .zone-select { width:auto; }
