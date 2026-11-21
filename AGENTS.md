@@ -37,3 +37,4 @@ use the editor.
 - Keep the item name seller-typed (never auto-extracted from chat text) and quantities separate from monetary product amounts; normalize older device-local orders on read so new fields do not break saved batches.
 - Keep duplicate matching and sequential submission decisions in a browser-safe pure module; pause each repeat before insertion so multiple pasted orders share the same tested safeguards.
 - Keep the product catalog device-local, read it after hydration, and surface storage failures; catalog selection changes only the item name so agreed monetary totals remain intact.
+- Restore the active queue after hydration before autosaving; keep it under its own localStorage key, remove that key on explicit clear, and derive all new invoices from the highest active invoice to preserve refresh continuity.

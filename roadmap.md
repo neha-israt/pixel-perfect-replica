@@ -6,3 +6,4 @@
 - [x] Separate Amount from editable Item and Qty, parse item details, and verify compact laptop/mobile editing.
 - [x] Warn before duplicate submissions, support skip/override decisions, and verify badges and courier exports.
 - [x] Add device-local product management and keyboard-accessible table autocomplete; verify persistence and desktop/mobile selection.
+- [ ] Autosave and restore the active orders, continue invoice numbering, and verify confirmed Clear All across refreshes.
