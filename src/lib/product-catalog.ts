@@ -1,3 +1,4 @@
+import { readWorkspaceStorage, writeWorkspaceStorage } from './browser-storage';
 export type CatalogProduct = { id: string; name: string; price: string };
 const key = 'orderclean-products-v1';
 
@@ -5,8 +6,8 @@ export function validProduct(product: CatalogProduct): boolean {
   return Boolean(product.id && product.name.trim() && product.price.trim() && Number.isFinite(Number(product.price)) && Number(product.price) >= 0);
 }
 
-export function readProducts(): CatalogProduct[] {
-  const data: unknown = JSON.parse(localStorage.getItem(key) || '[]');
+export function readProducts(workspace = 'Default'): CatalogProduct[] {
+  const data: unknown = JSON.parse(readWorkspaceStorage(key, workspace) || '[]');
   if (!Array.isArray(data)) throw new Error('Invalid catalog');
   return data.filter((item: unknown): item is CatalogProduct => {
     if (typeof item !== 'object' || item === null) return false;
@@ -15,9 +16,9 @@ export function readProducts(): CatalogProduct[] {
   });
 }
 
-export function saveProducts(products: CatalogProduct[]) {
+export function saveProducts(products: CatalogProduct[], workspace = 'Default') {
   if (!products.every(validProduct)) throw new Error('Invalid product');
-  localStorage.setItem(key, JSON.stringify(products));
+  writeWorkspaceStorage(key, JSON.stringify(products), workspace);
 }
 
 export function matchingProducts(products: CatalogProduct[], query: string): CatalogProduct[] {

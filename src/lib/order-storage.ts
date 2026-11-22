@@ -1,10 +1,11 @@
 import type { Order } from './orders';
+import { readWorkspaceStorage, writeWorkspaceStorage } from './browser-storage';
 
 export const ordersStorageKey = 'orderclean_orders';
 const fields = ['id', 'invoice', 'name', 'phone', 'address', 'product', 'delivery', 'cod', 'note'] as const;
 
-export function readOrders(): Order[] {
-  const data: unknown = JSON.parse(localStorage.getItem(ordersStorageKey) || '[]');
+export function readOrders(workspace = 'Default'): Order[] {
+  const data: unknown = JSON.parse(readWorkspaceStorage(ordersStorageKey, workspace) || '[]');
   if (!Array.isArray(data)) throw new Error('Invalid saved orders');
   return data.map((value: unknown) => {
     if (!value || typeof value !== 'object') throw new Error('Invalid saved order');
@@ -14,9 +15,8 @@ export function readOrders(): Order[] {
   });
 }
 
-export function saveOrders(orders: Order[]) {
-  if (orders.length === 0) localStorage.removeItem(ordersStorageKey);
-  else localStorage.setItem(ordersStorageKey, JSON.stringify(orders));
+export function saveOrders(orders: Order[], workspace = 'Default') {
+  writeWorkspaceStorage(ordersStorageKey, orders.length ? JSON.stringify(orders) : null, workspace);
 }
 
 export function nextInvoiceNumber(orders: Order[]): number {

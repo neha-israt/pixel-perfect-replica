@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { nextInvoiceNumber, ordersStorageKey, readOrders, saveOrders } from './order-storage';
 import { applyEdit, parseOrders } from './orders';
+import { workspaceKey } from './browser-storage';
 
 afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
 const message = 'Name: Rina\nPhone: 01712345678\nRoad 4, Sylhet\nCOD: 1450';
@@ -10,7 +11,7 @@ it('saves parsed and edited orders under the dedicated key without losing fields
   if (!order) throw new Error('Expected order');
   const edited = applyEdit(order, { item: 'Black hoodie', zone: 'inside', delivery: '60', cod: '1500', qty: '2', duplicateConfirmed: true });
   saveOrders([edited]);
-  expect(JSON.parse(localStorage.getItem('orderclean_orders') || '[]')).toEqual([edited]);
+  expect(JSON.parse(localStorage.getItem(workspaceKey('orderclean_orders', 'Default')) || '[]')).toEqual([edited]);
   expect(readOrders()).toEqual([edited]);
   expect(readOrders()[0]).toMatchObject({ invoice: 'OC-0001', product: '1440', delivery: '60', cod: '1500', item: 'Black hoodie', qty: '2', duplicateConfirmed: true });
 });

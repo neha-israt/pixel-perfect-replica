@@ -7,3 +7,4 @@
 - [x] Warn before duplicate submissions, support skip/override decisions, and verify badges and courier exports.
 - [x] Add device-local product management and keyboard-accessible table autocomplete; verify persistence and desktop/mobile selection.
 - [x] Autosave and restore the active orders, continue invoice numbering, and verify confirmed Clear All across refreshes.
+- [ ] Add safe browser storage and named workspace isolation; verify blocked storage, switching, refresh and CSV export.

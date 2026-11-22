@@ -44,3 +44,37 @@ it('keeps the active orders when device storage refuses clearing', async () => {
   expect(result.current.orders).toEqual(initial);
   expect(result.current.storageError).not.toBe('');
 });
+
+it('restores each workspace before autosaving and never writes the old queue into the new workspace', async () => {
+  const first = parseOrders('Name: Rina\nPhone: 01712345678\nRoad 4, Sylhet\nCOD: 1450');
+  const second = parseOrders('Name: Neha\nPhone: 01811223344\nRoad 5, Dhaka\nCOD: 1850', 3);
+  saveOrders(first, 'Default'); saveOrders(second, 'Neha');
+  const { result, rerender } = renderHook(({ workspace }) => useSavedOrders(workspace), { initialProps: { workspace: 'Default' } });
+  await waitFor(() => expect(result.current.orders).toEqual(first));
+  act(() => result.current.setOrders(previous => previous.map(order => applyEdit(order, { item: 'Ring' }))));
+  await waitFor(() => expect(readOrders('Default')[0]?.item).toBe('Ring'));
+  rerender({ workspace: 'Neha' });
+  await waitFor(() => expect(result.current.orders).toEqual(second));
+  expect(readOrders('Neha')).toEqual(second);
+  act(() => result.current.clearOrders());
+  rerender({ workspace: 'Default' });
+  await waitFor(() => expect(result.current.orders[0]?.item).toBe('Ring'));
+  expect(readOrders('Neha')).toEqual([]);
+});
+
+it('keeps added and edited orders usable and separate in memory when all storage is blocked', async () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked'); });
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Blocked'); });
+  const report = vi.fn();
+  const { result, rerender } = renderHook(({ workspace }) => useSavedOrders(workspace, true, report), { initialProps: { workspace: 'Default' } });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  act(() => result.current.setOrders(parseOrders('Name: Rina\nPhone: 01712345678\nRoad 4, Sylhet\nCOD: 1450')));
+  await waitFor(() => expect(result.current.storageError).not.toBe(''));
+  act(() => result.current.setOrders(previous => previous.map(order => applyEdit(order, { item: 'Ring' }))));
+  rerender({ workspace: 'Neha' });
+  await waitFor(() => expect(result.current.loaded).toBe(true));
+  expect(result.current.orders).toEqual([]);
+  rerender({ workspace: 'Default' });
+  await waitFor(() => expect(result.current.orders[0]?.item).toBe('Ring'));
+  expect(report).toHaveBeenCalled();
+});

@@ -1,10 +1,14 @@
 import { Link, useRouterState } from '@tanstack/react-router';
-import { ArrowUpRight, Check, ChevronDown, ClipboardList, History, Package, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, ChevronDown, ClipboardList, History, Package, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import parcels from '@/assets/parcels.jpg';
+import { useWorkspace } from './workspace-provider';
+import { WorkspaceSelector } from './workspace-selector';
+import { storageWarning } from '@/lib/browser-storage';
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const path = useRouterState({ select: s => s.location.pathname });
+  const { unavailable } = useWorkspace();
   return <div className="app-shell">
     <aside className="sidebar">
       <Link to="/" className="brand"><span className="brand-mark"><Package size={23}/></span>OrderClean<span className="text-primary text-xs self-start mt-1">BD</span></Link>
@@ -13,6 +17,6 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
       <div className="sidebar-promo"><img src={parcels} alt="Mint courier parcels and a delivery location pin" width={512} height={512} loading="lazy"/><h3>A little less messy.<br/>A lot more delivered.</h3><p>From your inbox to the next doorstep.</p><div className="mt-3 flex items-center gap-1 text-primary text-[11px]">Made for Bangladesh <ArrowUpRight size={13}/></div></div>
       <div className="profile"><span className="avatar">MS</span><div><p className="text-xs font-semibold">My shop</p><p className="text-[10px] text-muted-foreground mt-1">Local workspace</p></div><ChevronDown size={13} className="ml-auto text-muted-foreground"/></div>
     </aside>
-    <div className="min-w-0"><header className="topbar"><div className="flex items-center gap-2 text-xs text-muted-foreground">Workspace <span className="mx-1">/</span><span className="text-foreground font-medium">{path === '/history' ? 'Batch history' : 'Order clean-up'}</span></div><div className="flex items-center gap-5"><span className="desktop-only flex items-center gap-1.5 text-[11px] text-muted-foreground"><ShieldCheck size={14}/>Private on this device</span><span className="tag good"><Check size={12}/>Free workspace</span></div></header><main className="workspace">{children}<footer className="footer"><span>Less copy-paste. More deliveries.</span><span className="flex gap-1 items-center">Made with care in Bangladesh <span className="text-primary">●</span></span></footer></main></div>
+    <div className="min-w-0"><header className="topbar"><div className="flex items-center gap-2 text-xs text-muted-foreground"><WorkspaceSelector/><span className="desktop-only text-foreground font-medium">{path === '/history' ? 'Batch history' : 'Order clean-up'}</span></div><span className="flex items-center gap-1.5 text-[11px] text-muted-foreground"><ShieldCheck size={14}/>{unavailable ? 'Session only' : 'On this browser'}</span></header><main className="workspace">{unavailable && <div role="status" className="mb-4 flex items-start gap-2 rounded-md border border-border bg-secondary px-3 py-2 text-xs text-foreground"><AlertCircle size={15} className="shrink-0"/><span>{storageWarning}</span></div>}{children}<footer className="footer"><span>Less copy-paste. More deliveries.</span><span className="flex gap-1 items-center">Made with care in Bangladesh <span className="text-primary">●</span></span></footer></main></div>
   </div>;
 }
