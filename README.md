@@ -2,6 +2,8 @@
 
 A mobile-friendly order-cleaning and CSV preparation tool built for Bangladeshi F-commerce merchants. Paste messy customer order messages from Facebook Messenger or WhatsApp and turn them into clean, courier-ready spreadsheets for **Steadfast** and **Pathao** in seconds.
 
+**Live App:** [https://orderclean-bd.vercel.app/](https://orderclean-bd.vercel.app/)
+
 ## Features
 
 - **Smart Unstructured Order Parsing:** Automatically extracts recipient names, 11-digit Bangladeshi phone numbers (preserving leading zeros), delivery addresses, and COD amounts from raw chat messages while filtering out conversational greetings and chat noise.
@@ -38,8 +40,8 @@ npm run build
 
 ## Deployment
 
-Connected to GitHub and deployed via **Vercel**[cite: 2]. Pushing changes to `main` automatically triggers a fresh production deployment[cite: 2].
+Connected to GitHub and deployed via **Vercel** at [https://orderclean-bd.vercel.app/](https://orderclean-bd.vercel.app/). Pushing changes to `main` automatically triggers a fresh production deployment.
 
 ## Credits & Acknowledgments
 
-- Initial application scaffolding and base UI generated with **Lovable**[cite: 2], followed by iterative parser, state persistence, duplicate detection, and export refinements in VS Code.
+- Initial application scaffolding and base UI generated with **Lovable**, followed by iterative parser, state persistence, duplicate detection, and export refinements in VS Code.
