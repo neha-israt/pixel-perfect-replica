@@ -1,24 +1,45 @@
-# Pixel Perfect Replica
+# OrderClean BD
 
-Implement exactly the screenshot and nothing else
+A mobile-friendly order-cleaning and CSV preparation tool built for Bangladeshi F-commerce merchants. Paste messy customer order messages from Facebook Messenger or WhatsApp and turn them into clean, courier-ready spreadsheets for **Steadfast** and **Pathao** in seconds.
 
-This project was built with [Lovable](https://lovable.dev).
+## Features
 
-## Build with Lovable
+- **Smart Unstructured Order Parsing:** Automatically extracts recipient names, 11-digit Bangladeshi phone numbers (preserving leading zeros), delivery addresses, and COD amounts from raw chat messages while filtering out conversational greetings and chat noise.
+- **Automated Delivery Rate & COD Calculation:**
+  - Defaults to **৳60** for **Inside Dhaka** and **৳110** for **Outside Dhaka**.
+  - Respects explicit total bills and partial advance payments (e.g., bKash advances) when calculating product amounts and total COD.
+- **Manual Product & Quick Catalog Support:** Leaves item fields ready for accurate manual seller input, paired with an optional **Manage Products** quick-reference catalog.
+- **Duplicate Order Detection:** Flags duplicate orders matching existing phone numbers/details in the active list with **Skip Duplicate** and **Add Anyway** controls.
+- **Automatic Local Persistence:** Saves active orders and invoice numbering in `localStorage` (`Auto-saved on this device`) so data survives page refreshes, with a **Clear All** option when starting a new batch.
+- **Courier-Ready CSV Exports:** Generates properly formatted CSV files tailored for **Steadfast** and **Pathao** bulk uploads.
 
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/762ad149-683f-4d26-8e18-b8db59f4247e).
+## Tech Stack
 
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+- React + TypeScript
+- Vite / TanStack Start
+- Tailwind CSS & shadcn/ui
+- Vitest (unit & parser edge-case test suite)
 
-## Development
+## Local Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+```bash
+# Install dependencies
+npm install --legacy-peer-deps
 
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+# Start the development server
 npm run dev
+
+# Run the test suite
+npm test
+
+# Create a production build
+npm run build
 ```
+
+## Deployment
+
+Connected to GitHub and deployed via **Vercel**[cite: 2]. Pushing changes to `main` automatically triggers a fresh production deployment[cite: 2].
+
+## Credits & Acknowledgments
+
+- Initial application scaffolding and base UI generated with **Lovable**[cite: 2], followed by iterative parser, state persistence, duplicate detection, and export refinements in VS Code.
