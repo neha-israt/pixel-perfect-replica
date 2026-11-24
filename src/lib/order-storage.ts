@@ -19,8 +19,13 @@ export function saveOrders(orders: Order[], workspace = 'Default') {
   writeWorkspaceStorage(ordersStorageKey, orders.length ? JSON.stringify(orders) : null, workspace);
 }
 
-export function nextInvoiceNumber(orders: Order[]): number {
-  return orders.reduce((highest, order) => {
+export function nextInvoiceNumber(orders: Order[], workspace = 'Default'): number {
+  // The caller's queue covers unsaved in-memory edits; the persisted queue
+  // protects continuity when a caller has only a subset or after refresh.
+  let savedOrders: Order[] = [];
+  try { savedOrders = readOrders(workspace); }
+  catch { /* Storage errors are already surfaced by the workspace persistence hook. */ }
+  return [...orders, ...savedOrders].reduce((highest, order) => {
     const match = /^OC-(\d+)$/.exec(order.invoice);
     const number = Number(match?.[1] || 0);
     return Number.isSafeInteger(number) ? Math.max(highest, number) : highest;

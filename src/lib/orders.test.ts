@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyEdit, computeCod, normalizeDigits, orderErrors, parseCsv, parseOrders, sampleText, steadfastCsv, templateCsv } from './orders';
+import { applyEdit, computeCod, normalizeDigits, orderErrors, parseCsv, parseOrders, pathaoCsv, pathaoHeaders, sampleText, selectExportOrders, steadfastCsv, templateCsv } from './orders';
 
 function requiredOrder(text = sampleText, index = 0) {
   const order = parseOrders(text)[index];
@@ -44,15 +44,23 @@ describe('Order clean-up', () => {
     const order = requiredOrder();
     expect(applyEdit(order, { cod: '2000' }).product).toBe('1940');
     expect(applyEdit(order, { product: '1000' }).cod).toBe('1060');
+    expect(applyEdit(order, { delivery: '75' })).toMatchObject({ delivery: '75', cod: '1450', product: '1375' });
   });
   it('converts a Bangladesh country code to local format', () => {
     expect(requiredOrder('Name: Rafi\nPhone: +8801712345678\nAddress: Dhaka\nCOD: 200').phone).toBe('01712345678');
   });
   it('exports the exact six requested Steadfast columns and quotes addresses', () => {
     const csv = steadfastCsv([requiredOrder()]);
-    expect(parseCsv(csv)[0]).toEqual(['Invoice', 'Recipient Name', 'Recipient Address', 'Recipient Phone', 'COD Amount', 'Note']);
+    expect(csv.startsWith('\uFEFFInvoice,Name,Address,Phone,Amount,Note')).toBe(true);
+    expect(parseCsv(csv)[0]).toEqual(['Invoice', 'Name', 'Address', 'Phone', 'Amount', 'Note']);
     expect(parseCsv(csv)[1]?.[3]).toBe('01712345678');
     expect(parseCsv(csv)[1]?.[2]).toBe('House 12, Road 4, Dhanmondi, Dhaka');
+  });
+  it('quotes commas and multiline addresses and combines item, quantity, and notes', () => {
+    const order = { ...requiredOrder(), address: 'House 12, Road 4\nApt "2"', item: 'Blue shirt', qty: '3', note: 'Call, please' };
+    const csv = steadfastCsv([order]);
+    expect(csv).toContain('"House 12, Road 4\nApt ""2"""');
+    expect(parseCsv(csv)[1]).toEqual(['OC-0001', 'Nusrat Jahan', order.address, '01712345678', '1450', 'Item: Blue shirt; Qty: 3; Note: Call, please']);
   });
   it('blocks exporting invalid orders', () => {
     expect(() => steadfastCsv(parseOrders(sampleText))).toThrow();
@@ -65,7 +73,7 @@ describe('Courier CSV exports', () => {
   it('Steadfast uses exact column order, Total COD and 11-digit phone with leading 0', () => {
     const order = requiredOrder();
     const rows = parseCsv(steadfastCsv([order]));
-    expect(rows[0]).toEqual(['Invoice', 'Recipient Name', 'Recipient Address', 'Recipient Phone', 'COD Amount', 'Note']);
+    expect(rows[0]).toEqual(['Invoice', 'Name', 'Address', 'Phone', 'Amount', 'Note']);
     expect(rows[1]?.[3]).toBe('01712345678');
     expect(rows[1]?.[4]).toBe('1450');
   });
@@ -74,6 +82,20 @@ describe('Courier CSV exports', () => {
     const rows = parseCsv(templateCsv(headers, [{ RecipientPhone: '01712345678', RecipientName: 'A', ItemType: 'Parcel', RecipientCity: 'Dhaka', RecipientZone: 'Mirpur' }]));
     expect(rows[0]).toEqual(headers);
     expect(rows[1]).toEqual(['Parcel', 'A', '01712345678', 'Dhaka', 'Mirpur']);
+  });
+  it('Pathao fallback exports standard bulk columns and mapped order values', () => {
+    const order = { ...requiredOrder(), item: 'Blue shirt', qty: '2', note: 'Call first' };
+    const rows = parseCsv(pathaoCsv([order]));
+    expect(rows[0]).toEqual(pathaoHeaders);
+    expect(rows[1]).toEqual(['Parcel', '', 'OC-0001', 'Nusrat Jahan', '01712345678', order.address, '', '', '1450', '2', '', 'Item: Blue shirt; Qty: 2; Note: Call first', 'Call first']);
+  });
+  it('exports checked orders when selected, otherwise only Ready orders', () => {
+    const [ready] = parseOrders(sampleText);
+    if (!ready) throw new Error('Expected a ready order');
+    const review = { ...ready, id: 'review', phone: '' };
+    expect(selectExportOrders([ready, review], [])).toEqual([ready]);
+    expect(selectExportOrders([ready, review], ['review'])).toEqual([review]);
+    expect(selectExportOrders([ready, review], ['review'])).toHaveLength(1);
   });
 });
 
@@ -89,14 +111,32 @@ describe('Amount variations', () => {
   it.each(['Total Bill: 1450', 'Bill: 1450', 'taka 1450', 'tk: 1450', 'amount 1450', 'COD: 1450'])('recognizes %s as total COD', amount => {
     expect(requiredOrder(block(amount))).toMatchObject({ cod: '1450', product: '1390', address: 'House 12, Road 4, Dhaka' });
   });
-  it.each(['1450', '1,200 tk', '৳ 1,200', 'Payment 1,200 tk', '১৪৫০'])('falls back to price %s', amount => {
-    expect(requiredOrder(block(amount)).cod).toBe(amount.includes('200') ? '1200' : '1450');
+  it.each([
+    ['1450', '1510'],
+    ['1,200 tk', '1200'],
+    ['৳ 1,200', '1260'],
+    ['Payment 1,200 tk', '1200'],
+    ['১৪৫০', '1510'],
+  ])('falls back to price %s', (amount, expectedCod) => {
+    expect(requiredOrder(block(amount)).cod).toBe(expectedCod);
+  });
+  it('extracts loosely labeled and spaced product prices, then adds the detected-zone delivery', () => {
+    expect(requiredOrder(block('Price is ৳ 1 200 taka only'))).toMatchObject({ product: '1200', cod: '1260', delivery: '60' });
+    expect(requiredOrder(block('prce: 1,200/-'))).toMatchObject({ product: '1200', cod: '1260', delivery: '60' });
+  });
+  it('uses the inside-Dhaka rate for a bare standalone amount and recognizes loose totals as inclusive COD', () => {
+    expect(requiredOrder(block('1200'))).toMatchObject({ product: '1200', cod: '1260', delivery: '60' });
+    expect(requiredOrder(block('Grand total approx ৳ 1,450 only'))).toMatchObject({ product: '1390', cod: '1450', delivery: '60' });
+  });
+  it('keeps a standalone tk/taka collection amount inclusive of delivery', () => {
+    expect(requiredOrder(block('1490 tk'))).toMatchObject({ product: '1430', cod: '1490', delivery: '60' });
+    expect(requiredOrder('Name: Rina Begum\nPhone: 01712345678\nAddress: Agrabad, Chattogram\n1490 taka')).toMatchObject({ product: '1380', cod: '1490', delivery: '110' });
   });
   it('ignores parenthetical delivery instructions when extracting a bill', () => {
     expect(requiredOrder(block('Total Bill: 1450 (Delivery charge advance niye na thakle add kore diben)'))).toMatchObject({ cod: '1450', product: '1390' });
   });
   it('ignores numbers inside instructional parentheses for fallback prices', () => {
-    expect(requiredOrder(block('(Delivery charge 110 add kore diben)\n1450')).cod).toBe('1450');
+    expect(requiredOrder(block('(Delivery charge 110 add kore diben)\n1450')).cod).toBe('1510');
   });
   it('preserves partial-payment amounts inside parentheses', () => {
     expect(requiredOrder(block('Price: 1200 tk (advance 200 bkash korci, baki 1000 cod)')).cod).toBe('1000');
@@ -135,6 +175,11 @@ describe('Inclusive totals and exclusive prices', () => {
 });
 
 describe('Clean unlabeled addresses and product notes', () => {
+  it('parses a slash-separated unlabeled order with its stated amount as COD', () => {
+    expect(requiredOrder('Nusrat jahan / 01839759159 / hazaribagh, dhaka / 1490 tk')).toMatchObject({
+      name: 'Nusrat jahan', phone: '01839759159', address: 'hazaribagh, dhaka', delivery: '60', product: '1430', cod: '1490',
+    });
+  });
   it.each(['Assalamu Alaikum', 'As-salamu alaykum', 'Salam', 'Hi', 'Hello', 'Bhaiya', 'Apu', 'Hello!', 'Salam:'])('ignores greeting %s wherever it appears', greeting => {
     const order = requiredOrder(`${greeting}\nRina Begum\nPhone: 01712345678\n${greeting}\nHouse 12, Road 4\nSylhet\n${greeting}\nTotal Bill: 1450`);
     expect(order).toMatchObject({ name: 'Rina Begum', address: 'House 12, Road 4, Sylhet', note: `${greeting}; ${greeting}; ${greeting}` });
@@ -148,7 +193,7 @@ describe('Clean unlabeled addresses and product notes', () => {
     expect(order).toMatchObject({ address: 'Road 4, Sylhet Sadar', note: 'hoodie size XL; color black; Call before delivery', cod: '1450' });
     const row = parseCsv(steadfastCsv([order]))[1];
     expect(row?.[2]).toBe('Road 4, Sylhet Sadar');
-    expect(row?.[5]).toBe('hoodie size XL; color black; Call before delivery');
+    expect(row?.[5]).toBe('Qty: 1; Note: hoodie size XL; color black; Call before delivery');
   });
   it('accepts an unfamiliar locality directly below the phone and its continuation', () => {
     expect(requiredOrder('Name: Rina\nPhone: 01712345678\nKazir Dewri\nBuilding 8/B\nCOD: 1450').address).toBe('Kazir Dewri, Building 8/B');
@@ -187,7 +232,7 @@ describe('Conversation routing to Notes', () => {
     const row = parseCsv(steadfastCsv([order]))[1];
     expect(row?.[1]).toBe('Rina');
     expect(row?.[2]).toBe('Road 4, Sylhet');
-    expect(row?.[5]).toBe('As-salamu alaykum; hoodie size XL; color black; Call first');
+    expect(row?.[5]).toBe('Qty: 1; Note: As-salamu alaykum; hoodie size XL; color black; Call first');
   });
 });
 
@@ -208,6 +253,13 @@ describe('Item names are typed by the seller', () => {
   });
   it('defaults the item name to blank and quantity to one, never using phone/address/bill numbers', () => {
     expect(requiredOrder(block('House 2, Ring Road'))).toMatchObject({ item: '', qty: '1', cod: '1450' });
+  });
+  it('routes mixed item, size, and color descriptions only to notes', () => {
+    const order = requiredOrder('Name: Rina\nPhone: 01712345678\n1 ta black hoodie L size lagbe, Dhaka\nRoad 4, Sylhet\nCOD: 1450');
+    expect(order).toMatchObject({ name: 'Rina', address: 'Road 4, Sylhet', item: '', note: '1 ta black hoodie L size lagbe, Dhaka' });
+  });
+  it('does not accept an item description as an explicitly labeled recipient', () => {
+    expect(requiredOrder('Name: Apu dress ta hobe?\nPhone: 01712345678\nRoad 4, Sylhet\nCOD: 1450')).toMatchObject({ name: '', address: 'Road 4, Sylhet', note: 'Apu dress ta hobe?' });
   });
   it('a manually typed item name never changes the agreed monetary amounts', () => {
     expect(applyEdit(requiredOrder(block('ring')), { item: 'kettle', qty: '3' })).toMatchObject({ item: 'kettle', qty: '3', cod: '1450', product: '1340', delivery: '110' });

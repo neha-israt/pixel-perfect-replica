@@ -1,5 +1,5 @@
 export type Zone = 'inside' | 'outside';
-export type Order = { id: string; invoice: string; name: string; phone: string; address: string; item: string; qty: string; product: string; delivery: string; zone: Zone; cod: string; note: string; rawText?: string; duplicateConfirmed?: boolean };
+export type Order = { id: string; invoice: string; name: string; phone: string; address: string; item: string; qty: string; product: string; delivery: string; zone: Zone; cod: string; note: string; status?: string; rawText?: string; duplicateConfirmed?: boolean };
 /** Default courier base rates in BDT (Pathao/Steadfast standard parcel benchmarks). */
 export const deliveryRates: Record<Zone, number> = { inside: 60, outside: 110 };
 export const zoneLabels: Record<Zone, string> = { inside: 'Inside Dhaka', outside: 'Outside Dhaka' };
@@ -56,7 +56,7 @@ const withoutParentheses = (text: string) => {
   while (/\([^()]*\)/.test(clean)) clean = clean.replace(/\([^()]*\)/g, ' ');
   return clean;
 };
-const standalonePrice = /^\s*(?:৳|tk\.?|bdt)?\s*\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?\s*(?:৳|tk\.?|taka|bdt|টাকা)?\s*$/i;
+const standalonePrice = /^\s*(?:৳|[$€£]|tk\.?|bdt)?\s*\d{1,7}(?:[, ]\d{3})*(?:\.\d{1,2})?\s*(?:৳|[$€£]|tk\.?|taka|bdt|টাকা|\/-)?\s*$/i;
 const locationWords = /\b(?:road|rd|house|holding|flat|floor|sector|block|area|thana|sadar|district|village|union|upazila|upazilla|bazar|bazaar|lane|avenue|para|mohalla|dhaka|dhanmondi|mirpur|uttara|agrabad|chattogram|chittagong|sylhet|rajshahi|khulna|barishal|barisal|rangpur|mymensingh|cumilla|comilla|cox'?s bazar|gazipur|narayanganj|narsingdi|tangail|kishoreganj|manikganj|munshiganj|faridpur|gopalganj|madaripur|rajbari|shariatpur|bogura|bogra|joypurhat|naogaon|natore|chapainawabganj|pabna|sirajganj|dinajpur|gaibandha|kurigram|lalmonirhat|nilphamari|panchagarh|thakurgaon|bagerhat|chuadanga|jashore|jessore|jhenaidah|kushtia|magura|meherpur|narail|satkhira|bhola|barguna|jhalokati|patuakhali|pirojpur|bandarban|brahmanbaria|chandpur|feni|khagrachhari|lakshmipur|noakhali|rangamati|habiganj|moulvibazar|sunamganj|jamalpur|netrokona|sherpur)\b|(?:রোড|রাস্তা|বাড়ি|বাড়ি|বাসা|সেক্টর|ব্লক|এলাকা|থানা|সদর|জেলা|গ্রাম|বাজার|ঢাকা|মিরপুর|চট্টগ্রাম|সিলেট|খুলনা|রাজশাহী|বরিশাল|রংপুর|ময়মনসিংহ)/i;
 const itemWords = /\b(?:item|product|qty|quantity|size|colou?r|ta|piece|pieces|pcs|lagbe|hoodie|dress|ring|kettle|set|shirt|tshirt|t-shirt|pant|saree|order)\b|(?:সাইজ|রং|কালার|পিস|লাগবে|হুডি|ড্রেস|পণ্য|পরিমাণ|আংটি|কেটলি)/i;
 const greetingOpener = /\b(?:as[\s-]*salamu\s+(?:alaikum|alaykum)|assalamu\s+(?:alaikum|alaykum)|salam|hi|hello|bhaiya|bhai|vai|apu)\b|(?:আসসালামু\s*আলাইকুম|সালাম|ভাইয়া|ভাইয়া|আপু)(?:\s|[!,.।]|$)/i;
@@ -80,14 +80,23 @@ export function extractQuantity(text: string): string {
 export function parseOrders(text: string, start = 1): Order[] {
   const normalized = normalizeDigits(text).replace(/\r/g, '').trim();
   if (!normalized) return [];
-  const chunks = normalized.split(/\n\s*\n|\n[-=]{3,}\n|\n(?=(?:name|recipient(?: name)?|নাম)\s*[:：])/i).filter(x => x.trim());
-  const keyLine = /^[^:：]{1,25}[:：]/;
   const phoneRe = /(?:\+?88[ -]?)?01[\d -]{7,14}\d/;
+  // Support compact chat exports that use slashes between the four order fields.
+  // Only expand a line when its final segment is clearly an amount and one segment is a phone.
+  const prepared = normalized.split('\n').map(line => {
+    const parts = line.split('/').map(part => part.trim());
+    return parts.length >= 4 && phoneRe.test(parts.join(' ')) && standalonePrice.test(parts[parts.length - 1] ?? '')
+      ? parts.join('\n')
+      : line;
+  }).join('\n');
+  const chunks = prepared.split(/\n\s*\n|\n[-=]{3,}\n|\n(?=(?:name|recipient(?: name)?|נাম)\s*[:：])/i).filter(x => x.trim());
+  const keyLine = /^[^:：]{1,25}[:：]/;
   const useful = chunks.filter(chunk => phoneRe.test(chunk) || chunk.split('\n').filter(x => keyLine.test(x.trim())).length >= 2);
   return useful.map((rawChunk, i) => {
     const allLines = rawChunk.split('\n').map(x => x.trim()).filter(Boolean);
     // Keep conversation and item requests in Notes, never identity fields.
-    const isItem = (x: string) => itemWords.test(x) && !locationWords.test(x) && !amountLabels.test(x);
+    const itemDetail = (x: string) => /\b(?:qty|quantity|size|colou?r|ta|piece|pieces|pcs|lagbe)\b|(?:সাইজ|রং|কালার|পিস|লাগবে)/i.test(x);
+    const isItem = (x: string) => itemWords.test(x) && (!locationWords.test(x) || itemDetail(x)) && !amountLabels.test(x);
     const chatter = (x: string) => !isItem(x) && (greetingOpener.test(x) || /[?？]|\b(?:hobe|ache|please|plz)\b/i.test(x)) && !phoneRe.test(x) && !/^(?:name|recipient|customer|address|addr|add|note|instruction|নাম|ঠিকানা|নোট)\s*[:：-]/i.test(x);
     const noteOnly = (x: string) => greetingOpener.test(x) || isItem(x) || (chatter(x) && !locationWords.test(x));
     const lines = allLines.filter(x => !noteOnly(x));
@@ -98,7 +107,10 @@ export function parseOrders(text: string, start = 1): Order[] {
     let phone = rawPhone.replace(/\D/g, '');
     if (phone.startsWith('8801')) phone = phone.slice(2);
     const codLine = field(amountLabels);
-    const name = field(/^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i) || lines.find(x => !isItem(x) && !locationWords.test(x) && !/\d|[:：]|(?:tk|bdt)/i.test(x)) || '';
+    const nameLabel = /^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i;
+    const explicitName = lines.find(x => nameLabel.test(x))?.replace(nameLabel, '').trim() ?? '';
+    const usableName = (value: string) => Boolean(value) && !isItem(value) && !greetingOpener.test(value) && !locationWords.test(value) && !/\d|[:：]|(?:tk|bdt)/i.test(value);
+    const name = (usableName(explicitName) ? explicitName : '') || lines.find(x => !nameLabel.test(x) && usableName(x)) || '';
     const noteLabel = /^(?:note|instruction|নোট)\s*[:：-]\s*/i;
     const addressLabel = /^(?:address|addr|add|delivery address|ঠিকানা)\s*[:：-]\s*/i;
     const addressIndex = lines.findIndex(x => addressLabel.test(x));
@@ -122,7 +134,7 @@ export function parseOrders(text: string, start = 1): Order[] {
         addressLines.add(line);
       }
     });
-    const note = allLines.filter(line => noteOnly(line) || noteLabel.test(line) || (line !== name && !isMetadata(line) && !addressLines.has(line) && !phoneRe.test(line) && !/(?:tk|bdt|টাকা|৳)/i.test(line))).map(line => line.replace(noteLabel, '')).join('; ');
+    const note = allLines.filter(line => noteOnly(line) || noteLabel.test(line) || (line !== name && !isMetadata(line) && !addressLines.has(line) && !phoneRe.test(line) && !/(?:tk|bdt|টাকা|৳)/i.test(line))).map(line => line.replace(noteLabel, '').replace(/^(?:name|recipient(?: name)?|customer|নাম)\s*[:：-]\s*/i, '')).join('; ');
     const address = addressParts.join(', ');
     const zone = detectZone(address);
     const delivery = String(deliveryRates[zone]);
@@ -143,11 +155,30 @@ export function orderErrors(order: Order): string[] {
   return errors;
 }
 
-const quote = (value: string) => `"${(/^[=+@\-\t\r]/.test(value) ? "'" : '') + value.replace(/"/g, '""')}"`;
-export const steadfastHeaders = ['Invoice', 'Recipient Name', 'Recipient Address', 'Recipient Phone', 'COD Amount', 'Note'];
+const csvCell = (value: string) => {
+  const safe = (/^[=+@\-\t\r]/.test(value) ? "'" : '') + value;
+  return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+};
+export const steadfastHeaders = ['Invoice', 'Name', 'Address', 'Phone', 'Amount', 'Note'];
+export const pathaoHeaders = ['ItemType', 'StoreName', 'MerchantOrderId', 'RecipientName', 'RecipientPhone', 'RecipientAddress', 'RecipientCity', 'RecipientZone', 'AmountToCollect', 'ItemQuantity', 'ItemWeight', 'ItemDesc', 'SpecialInstruction'];
+export function orderExportNote(order: Order) {
+  return [order.item.trim() && `Item: ${order.item.trim()}`, `Qty: ${order.qty || '1'}`, order.note.trim() && `Note: ${order.note.trim()}`].filter(Boolean).join('; ');
+}
+export function pathaoOrderRow(order: Order): Record<string, string> {
+  return {
+    ItemType: 'Parcel', StoreName: '', MerchantOrderId: order.invoice, RecipientName: order.name,
+    RecipientPhone: order.phone, RecipientAddress: order.address, RecipientCity: '', RecipientZone: '',
+    AmountToCollect: order.cod, ItemQuantity: order.qty || '1', ItemWeight: '',
+    ItemDesc: orderExportNote(order), SpecialInstruction: order.note,
+  };
+}
+/** Checked orders take precedence; otherwise export only orders that are ready. */
+export function selectExportOrders(orders: Order[], selectedIds: string[]) {
+  return selectedIds.length ? orders.filter(order => selectedIds.includes(order.id)) : orders.filter(order => !orderErrors(order).length);
+}
 export function steadfastCsv(orders: Order[]) {
   if (orders.some(order => orderErrors(order).length)) throw new Error('Correct flagged orders before exporting.');
-  return '\uFEFF' + [steadfastHeaders, ...orders.map(o => [o.invoice, o.name, o.address, o.phone, o.cod, o.note])].map(row => row.map(quote).join(',')).join('\r\n');
+  return '\uFEFF' + [steadfastHeaders, ...orders.map(o => [o.invoice, o.name, o.address, o.phone, o.cod, orderExportNote(o)])].map(row => row.map(csvCell).join(',')).join('\r\n');
 }
 
 export function parseCsv(text: string): string[][] {
@@ -165,9 +196,13 @@ export function parseCsv(text: string): string[][] {
 }
 
 export function templateCsv(headers: string[], rows: Record<string, string>[]) {
-  return '\uFEFF' + [headers, ...rows.map(row => headers.map(h => row[h] ?? ''))].map(row => row.map(quote).join(',')).join('\r\n');
+  return '\uFEFF' + [headers, ...rows.map(row => headers.map(h => row[h] ?? ''))].map(row => row.map(csvCell).join(',')).join('\r\n');
 }
-const num = (v?: string) => (v ? v.replace(/,/g, '') : '');
+export function pathaoCsv(orders: Order[]) {
+  if (orders.some(order => orderErrors(order).length)) throw new Error('Correct flagged orders before exporting.');
+  return templateCsv(pathaoHeaders, orders.map(pathaoOrderRow));
+}
+const num = (v?: string) => (v ? v.replace(/[\s,]/g, '') : '');
 /** Explicit collection amounts win; plain product prices include the supplied delivery only when no advance is stated. */
 export function extractCod(chunk: string, codLine = '', delivery = '0') {
   chunk = normalizeDigits(chunk);
@@ -178,20 +213,28 @@ export function extractCod(chunk: string, codLine = '', delivery = '0') {
   if (due) return num(due);
   const first = (t: string) => t.match(new RegExp(N))?.[1];
   const cleanLines = withoutParentheses(chunk).split('\n').map(line => line.trim());
-  // Never interpret a phone, house/road number, or instructional note as a fallback price.
-  const candidates = cleanLines.filter(line => !/^(?:phone|phn|ph|mob(?:ile)?|cell|contact|address|addr|add|delivery address|note|instruction|ফোন|মোবাইল|নম্বর|ঠিকানা|নোট)\s*[:：-]/i.test(line));
+  // Never interpret a phone, address/location, quantity, or note as a fallback price.
+  const excludedField = /^(?:name|recipient|customer|phone|phn|ph|mob(?:ile)?|cell|contact|address|addr|add|delivery address|note|instruction|qty|quantity|size|color|colour|নাম|ফোন|মোবাইল|নম্বর|ঠিকানা|নোট|পরিমাণ|সাইজ)\s*[:：-]/i;
+  const phone = /(?:\+?88[ -]?)?01[\d -]{7,14}\d/;
+  const candidates = cleanLines.filter(line => !excludedField.test(line) && !phone.test(line) && !locationWords.test(line) && !/\b(?:pcs?|pieces?|units?)\b|পিস/i.test(line));
   const totalLine = candidates.find(line => /^(?:grand\s+total|total(?:\s+bill)?)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*\d/i.test(line));
   const labeledLine = totalLine || candidates.find(line => amountLabels.test(line));
   const labeled = labeledLine?.replace(amountLabels, '');
   const explicitCod = candidates.find(line => /^(?:cod(?: amount)?|cash(?: on delivery)?)\s*[:：-]?\s*(?:৳|tk\.?|bdt)?\s*\d/i.test(line));
   // A labeled COD already states the remaining collection amount; do not subtract advance twice.
   if (explicitCod) return num(first(explicitCod.replace(amountLabels, '')));
-  const currency = candidates.join('\n').match(/(?:^|[^\d,])(?:৳|\btk\.?|\bbdt)\s*(\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?)(?![\d,])/i)?.[1]
-    || candidates.join('\n').match(/(?:^|[^\d,])(\d{1,7}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:৳|tk\b|taka\b|bdt\b|টাকা)/i)?.[1];
-  const fallback = candidates.find(line => standalonePrice.test(line));
-  const main = num(first(labeled ?? '') || first(withoutParentheses(codLine)) || currency || first(fallback ?? ''));
+  const numericAmount = /(?:^|[^\d])((?:\d{1,7}(?:[, ]\d{3})*|\d+)(?:\.\d{1,2})?)(?!\d)/;
+  const flexibleLine = candidates.find(line => numericAmount.test(line) && (amountLabels.test(line) || /(?:৳|[$€£]|\btaka?\b|\btka\b|\bbdt\b|টাকা|\bpr(?:i|e)?ce\b|\bprize\b|\bcost\b|\btotal\b|\bbill\b|\bcod\b|\bpayment\b|\bpaymnt\b|\bamount\b|\bamt\b)/i.test(line)))
+    || candidates.find(line => standalonePrice.test(line));
+  const flexibleValue = flexibleLine?.match(numericAmount)?.[1];
+  const main = num(first(labeled ?? '') || first(withoutParentheses(codLine)) || flexibleValue || '');
   const adv = num(chunk.match(new RegExp(`(?:advance|adv|agrim|অগ্রিম|paid)\\s*[:：-]?\\s*(?:৳|tk\\.?)?\\s*${N}`, 'i'))?.[1]);
   if (main && adv && Number(adv) < Number(main)) return String(Number(main) - Number(adv));
-  if (main && !adv && labeledLine && /^(?:price|product(?: price| amount)?)\b/i.test(labeledLine)) return computeCod(main, delivery);
+  const selectedLine = labeledLine || (!codLine ? flexibleLine : undefined);
+  // A standalone tk/taka amount is commonly the merchant's final collection figure.
+  // Keep it inclusive; only explicitly labeled product prices add delivery below.
+  if (main && !adv && !labeledLine && !codLine && flexibleLine && standalonePrice.test(flexibleLine) && /\b(?:tk|taka)\b|টাকা/i.test(flexibleLine)) return main;
+  if (main && !adv && selectedLine && /^(?:price|prize|prce|product(?: price| amount)?|cost)\b/i.test(selectedLine)) return computeCod(main, delivery);
+  if (main && !adv && !labeledLine && !codLine && flexibleLine && !/\b(?:total|bill|cod|payment)\b/i.test(flexibleLine)) return computeCod(main, delivery);
   return main;
 }

@@ -15,7 +15,7 @@ it('separates order lists and invoice continuity by workspace name', () => {
   expect(readOrders('Default')[0]?.cod).toBe('1450');
   expect(readOrders('Neha')[0]?.cod).toBe('1850');
   expect(nextInvoiceNumber(readOrders('Default'))).toBe(8);
-  expect(nextInvoiceNumber(readOrders('Neha'))).toBe(3);
+  expect(nextInvoiceNumber(readOrders('Neha'), 'Neha')).toBe(3);
   saveOrders([], 'Neha');
   expect(readOrders('Neha')).toEqual([]);
   expect(readOrders('Default')).toHaveLength(1);
